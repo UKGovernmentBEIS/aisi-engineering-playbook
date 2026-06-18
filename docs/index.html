@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AISI Engineering Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --surface:#ffffff; --raised:#f4f4f5; --border:#e4e4e7; --border-strong:#d4d4d8;
+    --ink:#18181b; --sec:#3f3f46; --muted:#71717a; --dark:#0d1119; --rule:#8d919a55;
+    --maxw:80rem;  /* the whole composition (content + vector) is centred within this */
+    --a-evaluate:#2f6fe0; --a-isolate:#0e7490; --a-connect:#2d7fb8; --a-run:#8b63c4; --a-scale:#4f7d97;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--surface);color:var(--ink);line-height:1.6;
+       font-family:"Onest","Inter",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  h1,h2{letter-spacing:-.02em;line-height:1.08;margin:0}
+
+  /* hero #1: black title panel + uniform field (draws away off the right) */
+  #darkpanel{position:absolute;top:0;left:0;width:100%;z-index:1;background:var(--dark);border-bottom:1px solid #2a2f3a}
+  #herofield{position:absolute;top:0;left:0;width:100%;height:100vh;z-index:2;overflow:hidden;pointer-events:none;
+    -webkit-mask-image:linear-gradient(to right,transparent 0%,transparent 42%,#000 60%);
+    mask-image:linear-gradient(to right,transparent 0%,transparent 42%,#000 60%)}
+  #herofield path{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round}
+
+  /* hero #2: the scrollable thread that changes shape per section (right band, behind the black) */
+  .bg{position:fixed;top:0;left:calc(clamp(1.5rem,12vw,15rem) + 36rem);right:0;height:100vh;z-index:0;overflow:hidden;pointer-events:none}
+  .bg svg{width:100%;height:100%;display:block}
+  .bg svg path,.bg svg circle{fill:none;stroke-width:1.25;vector-effect:non-scaling-stroke;stroke-linecap:round}
+
+  .rail{position:fixed;left:0;top:0;height:3px;width:0;z-index:30;background:var(--a-evaluate);transition:background .4s}
+  .dots{position:fixed;left:16px;top:50%;transform:translateY(-50%);z-index:30;display:none;flex-direction:column;gap:10px}
+  @media(min-width:1024px){.dots{display:flex}}
+  .dots button{width:3px;height:20px;border:0;border-radius:2px;background:#d1d5db;padding:0;cursor:pointer;transition:all .3s}
+  .dots button[aria-current=true]{width:6px;height:32px}
+
+  main{position:relative;z-index:5}
+  /* content anchored ~3/4 to the left; the vector fills the space to its right */
+  .wrap{margin:0;padding:0 1.5rem 0 clamp(1.5rem,12vw,15rem)}
+  .col{max-width:34rem}
+
+  .hero{min-height:100vh;display:flex;align-items:center;color:#fff}
+  .hero .herologo{height:2rem;width:auto;display:block;margin-bottom:1.75rem}
+  .hero .eyebrow{color:#ffffff8c}
+  .hero h1{color:#fff;font-size:clamp(2rem,5vw,3.3rem);font-weight:700;margin-bottom:1.3rem}
+  .hero p{color:#ffffffb3;font-size:1.15rem;max-width:32rem}
+  .hero a.cap{color:#fff;text-decoration:underline;text-decoration-color:#ffffff4d;text-underline-offset:4px}
+  .hero a.cap:hover{text-decoration-color:#fff}
+  .eyebrow{font-size:.78rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-bottom:1rem}
+
+  .layer{min-height:100vh;display:flex;align-items:center;padding:5rem 0;border-top:1px solid var(--rule)}
+  .badge{display:inline-flex;align-items:center;gap:.5rem;font-size:.8rem;font-weight:600;padding:.3rem .7rem;border-radius:999px}
+  .badge .n{font-variant-numeric:tabular-nums;opacity:.7}
+  .layer h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin:1rem 0 .6rem}
+  .layer .sub{font-size:1.05rem;color:var(--sec);margin-bottom:2rem;max-width:34rem}
+  .desc{border-left:2px solid;padding-left:1.6rem;margin-bottom:1.4rem;max-width:34rem}
+  .desc p{font-size:.95rem;color:var(--sec);margin:0 0 1rem}
+  .desc p:last-child{margin-bottom:0}
+  .deepdive{display:inline-flex;align-items:center;gap:.4rem;font-size:.9rem;font-weight:600;text-decoration:none;margin-bottom:2rem}
+  .deepdive:hover{text-decoration:underline}
+  .repos{display:grid;grid-template-columns:1fr;gap:.75rem;max-width:34rem}
+  @media(min-width:560px){.repos{grid-template-columns:1fr 1fr}}
+  .repo{display:block;border:1px solid var(--border);border-radius:.6rem;background:var(--raised);padding:1rem;text-decoration:none;transition:border-color .2s}
+  .repo:hover{border-color:var(--border-strong)}
+  .repo .name{font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:.85rem;word-break:break-all}
+  .repo .rd{font-size:.78rem;color:var(--sec);margin:.4rem 0 .5rem}
+  .repo .stars{font-size:.75rem;color:var(--muted)}
+
+  footer{position:relative;z-index:5;padding:1.5rem 0;border-top:1px solid var(--border);background:var(--surface)}
+  footer .row{display:flex;flex-direction:column;gap:1.5rem}
+  @media(min-width:640px){footer .row{flex-direction:row;align-items:center;justify-content:space-between}}
+  footer img{height:2.75rem;width:auto}
+  .os{display:flex;flex-direction:column;gap:.75rem}
+  @media(min-width:640px){.os{flex-direction:row;align-items:baseline;gap:2rem}}
+  .os h4{font-size:.75rem;font-family:ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;white-space:nowrap}
+  .os ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,auto);gap:.4rem 1.5rem}
+  .os a{font-family:ui-monospace,Menlo,monospace;font-size:.75rem;color:var(--sec);text-decoration:none}
+  .os li{font-family:ui-monospace,Menlo,monospace;font-size:.75rem;color:var(--sec)}
+  .os .cs{color:var(--muted)}
+  .os a:hover{color:var(--ink)}
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div id="darkpanel" aria-hidden="true"></div>
+<div class="bg"><svg id="lanesvg" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice"><g id="extra"></g><g id="lanes"></g></svg></div>
+<svg id="herofield" viewBox="0 0 1200 600" preserveAspectRatio="none" aria-hidden="true"></svg>
+<div class="rail" id="rail"></div>
+<div class="dots" id="dots" aria-label="Sections"></div>
+<main id="main"></main>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+const W=400,H=900,N=10,TOP=-40,BOT=H+40,CX=W/2;
+const PAL=["#15EAEA","#4183F8","#65AEE0","#7EB1CB","#AF93D2"];
+const laneX=k=>(k+0.5)/N*W, env=t=>Math.sin(t*Math.PI), Y=t=>TOP+(BOT-TOP)*t;
+const lane=dev=>((t,k)=>[laneX(k)+dev(t,k,laneX(k)),Y(t)]);
+const clamp=x=>x<0?0:x>1?1:x;
+function smooth(pts){let d="M"+pts[0][0].toFixed(1)+" "+pts[0][1].toFixed(1);
+ for(let i=0;i<pts.length-1;i++){const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+  const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6;
+  d+="C"+c1x.toFixed(1)+" "+c1y.toFixed(1)+" "+c2x.toFixed(1)+" "+c2y.toFixed(1)+" "+p2[0].toFixed(1)+" "+p2[1].toFixed(1);}return d;}
+const DEV={
+ flow:(t,k)=>env(t)*30*Math.sin(t*3*Math.PI+k*0.6),
+ straight:()=>0,
+ converge:(t,k,x0)=>env(t)*(CX-x0)*0.7,
+ weave:(t,k)=>env(t)*20*Math.sin(t*4*Math.PI+k*Math.PI),
+ fan:(t,k,x0)=>env(t)*(x0-CX)*0.6,
+};
+const EX={
+ grid:()=>{const a=[];for(let r=1;r<=11;r++)a.push({t:"line",x1:-40,y1:r/12*H,x2:W+40,y2:r/12*H});return a;},
+ rungs:()=>{const a=[];for(let r=1;r<=5;r++){const y=r/6*H;for(let k=0;k<N-1;k+=2)a.push({t:"line",x1:laneX(k),y1:y,x2:laneX(k+1),y2:y});}return a;},
+ gateway:()=>[{t:"ring",cx:CX,cy:H*0.5,r:14},{t:"ring",cx:CX,cy:H*0.5,r:28}],
+ nodes:()=>{const a=[];for(let k=0;k<N;k++){const x0=laneX(k);a.push({t:"ring",cx:x0+(x0-CX)*0.6,cy:H*0.5,r:5});}return a;},
+};
+const accentCol=a=>(()=>a);
+
+const HERO={eyebrow:"UK AI Security Institute",
+  title:"Engineering that powers AI security research"};
+
+// SECTIONS carry BOTH the scrollable-thread params (pt/ex/line) and the real content
+const SECTIONS=[
+ {id:"hero",line:"#65AEE0",op:.45,pt:lane(DEV.flow),ex:null,hero:true},
+ {id:"evaluate",num:1,label:"Evaluate",title:"Evaluation Framework",accent:"var(--a-evaluate)",line:"#4183F8",op:.42,pt:lane(DEV.flow),ex:null,
+  sub:"A reproducible way to test frontier AI models across security-relevant domains.",
+  desc:["New models arrive constantly, so evaluation cannot be a bottleneck and it cannot be bespoke. A result is only useful if it is reproducible, auditable, and comparable across providers, and researchers spend their time on evaluation logic rather than the infrastructure underneath it.",
+    "The way to get there is composability. When the pieces of an evaluation are independent and pluggable, the same building blocks can be recombined for a multiple-choice knowledge test or a multi-step agent completing a cyber task, and the framework can grow without anyone editing its core. That is also what lets a community of contributors build and share benchmarks across organisations rather than each rebuilding the same scaffolding.",
+    "The hardest cases are agentic: models that use tools, run code, and take actions across an environment over many steps. Handling those well by treating agents, tool use, and isolated execution as first-class concerns rather than add-ons is what keeps the Inspect framework at the frontier instead of stuck on yesterday's evaluations."],
+  repos:[{name:"inspect_ai",url:"https://github.com/UKGovernmentBEIS/inspect_ai",description:"Composable evaluation framework. Datasets, solvers, scorers, sandboxes, and agents as pluggable components. 40+ model providers, async-first, with a built-in log viewer.",stars:1782},
+    {name:"inspect_evals",url:"https://github.com/UKGovernmentBEIS/inspect_evals",description:"150+ community benchmarks across 11 categories: knowledge, reasoning, coding, safeguards, cybersecurity, scheming, mathematics, and more.",stars:381},
+    {name:"inspect_cyber",url:"https://github.com/UKGovernmentBEIS/inspect_cyber",description:"YAML-driven extension for agentic cyber evaluations. Multi-sandbox, checkpoint-based scoring, solution verification.",stars:22}]},
+ {id:"isolate",num:2,label:"Isolate",title:"Sandboxed Execution",accent:"var(--a-isolate)",line:"#15EAEA",op:.46,pt:lane(DEV.straight),ex:EX.grid,
+  sub:"Tiered containment that matches isolation to the risk each evaluation carries.",
+  desc:["The moment an evaluation gives a model shell access, code execution, or a network, its actions need to stay inside a sandbox. But containment has tradeoffs, stronger isolation is slower and more expensive to run, and not every evaluation carries the same risk. A coding benchmark and a cyber capabilities assessment do not warrant the same mitigations.",
+    "Getting it wrong is costly in both directions. Default to the heaviest option everywhere and you pay for it in speed, cost, and operational drag; default to the lightest and you leave a gap exactly where a model might be trying to escape. The useful move is to stop treating isolation as a single dial and instead classify what an evaluation actually needs, then match the containment to that.",
+    "That classification is the heart of the approach. With clear, independent axes for what a model can do, where it runs, and what it can reach, a team can reason about isolation, deliberately picking the lightest tier that is still safe for the job in front of them."],
+  repos:[{name:"aisi-sandboxing",url:"https://github.com/UKGovernmentBEIS/aisi-sandboxing",description:"Sandboxing toolkit with a published protocol for assessing isolation requirements across three axes.",stars:19},
+    {name:"inspect_k8s_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox",description:"Kubernetes sandbox for Inspect with Cilium network policies and gVisor container isolation.",stars:26},
+    {name:"inspect_proxmox_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox",description:"Proxmox VM sandbox with SDN networking and snapshot capabilities.",stars:4},
+    {name:"inspect_ec2_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox",description:"AWS EC2 VM sandbox using SSM for cloud-based VM isolation.",stars:1}]},
+ {id:"connect",num:3,label:"Connect",title:"Multi-Provider Model Access",accent:"var(--a-connect)",line:"#65AEE0",op:.46,pt:lane(DEV.converge),ex:EX.gateway,
+  sub:"A transparent proxy that routes every model call through one audited layer.",
+  desc:["Researchers call models from many providers, and as an organisation grows it needs to know what was sent where, control the spend, and revoke access instantly. None of that is possible if raw provider keys are handed out directly but any control that adds friction will end up being routed around, and a layer researchers bypass records nothing.",
+    "The resolution is a layer that sits in the path without getting in the way. If adopting it costs a researcher a couple of environment variables and no code change, the audit trail stays complete by construction. Authentication, logging, per-team cost views, and instant revocation then all live in one place instead of on individual machines.",
+    "This is an architectural pattern. The principles, such as invisible adoption, credentials that are never static, capture below the layer where the client gets a choice, all carry across whichever cloud and provider mix you run."],
+  repos:[{name:"portunus",url:"",description:"Transparent API key proxy with audit logging. Points existing SDKs at a reverse proxy via environment variables; the deployment infrastructure is AISI-specific.",stars:0}]},
+ {id:"run",num:4,label:"Run",title:"The Research Platform",accent:"var(--a-run)",line:"#AF93D2",op:.46,pt:lane(DEV.weave),ex:EX.rungs,
+  sub:"The platform researchers work from, with their tools, data, and compute already in place.",
+  desc:["Research output often needs to become something the team can actually use, such as a dashboard, a service, or a shared tool. But getting there from working analysis code is infrastructure work that has little to do with research: a development environment, a usable set of tools, and a safe path to deployment. In addition, being in government and central IT functions adds extra complexity, from managed laptops to accreditation and procurement.",
+    "Two ways to absorb that work both fail at scale. Let every researcher solve it from scratch and each application becomes hundreds of lines of fiddly, subtly different infrastructure, where a fix in one never reaches the others. Hand all ownership to a central platform team and that team becomes the bottleneck for anything that touches infrastructure.",
+    "The third way is to make the common case cheap. A small, owned library of tested building blocks that are composed by the researcher and maintained once by the platform team. This in turn means deploying a new application is a one-day job rather than a multi-week project, with a single improvement landing everywhere at once."],
+  repos:[]},
+ {id:"scale",num:5,label:"Scale",title:"Supercomputer-Scale Inference",accent:"var(--a-scale)",line:"#7EB1CB",op:.46,pt:lane(DEV.fan),ex:EX.nodes,
+  sub:"Cloud-native workflows and reproducible inference on a High-Performance Computing cluster.",
+  desc:["The largest open-weight models do not fit on a single GPU, and the evaluations that need them are growing in length and complexity. A national AI supercomputer supplies the raw capacity to keep up but an HPC environment looks nothing like the cloud the platform already runs on. No Docker, batch scheduling instead of persistent machines, and isolated networks that cannot be reached from outside.",
+    "Porting cloud workflows to HPC by hand is slow, and maintaining both creates friction that slows everything down. We want to avoid two separate ways of working. The goal instead is for the supercomputer to feel like a natural extension of the existing platform, with the same tooling, same workflows, same security model, so a researcher barely notices which infrastructure they are on.",
+    "To achieve this there are two ideas that we have implemented. First is exposing models that run inside the isolated HPC network back to the rest of the platform. Secondly, capturing the hard-won knowledge of how to build, serve, and validate workloads as reusable, version-controlled configuration, so that solving a problem once means everyone benefits."],
+  repos:[{name:"gimlet",url:"https://github.com/UKGovernmentBEIS/gimlet",description:"Reverse HTTP tunnel for exposing services from private networks. Go, with JWT auth and Prometheus metrics.",stars:3}]},
+ {id:"footer",line:"#7EB1CB",op:0,pt:lane(DEV.fan),ex:null,footer:true},
+];
+
+/* ---------- render content (everything shares the same left .wrap) ---------- */
+const main=document.getElementById("main"), dotsEl=document.getElementById("dots");
+const cap=(id,t)=>'<a class="cap" href="#sec-'+id+'">'+t+'</a>';
+
+const heroEl=document.createElement("section");heroEl.id="sec-hero";heroEl.className="hero";
+heroEl.innerHTML='<div class="wrap"><div class="col"><img class="herologo" src="aisi-logo-white.png" alt="AISI — AI Security Institute" /><h1>'+HERO.title+'</h1>'
+  +'<p>A playbook describing AISI\'s tech stack for frontier model evaluation. We break this down into five layers that walk through the engineering behind how we test frontier AI at scale.</p><p>'+cap("evaluate","Evaluate")+' the model, '+cap("isolate","Isolate")+' its execution, '
+  +cap("connect","Connect")+' through a proxy, '+cap("run","Run")+' the research platform, and '+cap("scale","Scale")
+  +' inference across a High-Performance Computing cluster.</p></div></div>';
+main.appendChild(heroEl);
+
+SECTIONS.filter(s=>!s.hero&&!s.footer).forEach(s=>{
+  const sec=document.createElement("section");sec.id="sec-"+s.id;sec.className="layer";
+  const badge='<span class="badge" style="background:'+s.accent+'1a;color:'+s.accent+'"><span class="n">'+String(s.num).padStart(2,"0")+'</span>'+s.label+'</span>';
+  const desc='<div class="desc" style="border-color:'+s.accent+'">'+s.desc.map(p=>'<p>'+p+'</p>').join("")+'</div>';
+  const deep='<a class="deepdive" style="color:'+s.accent+'" href="'+s.id+'.html">Deep dive →</a>';
+  const repos=s.repos&&s.repos.length?'<div class="repos">'+s.repos.map(r=>{const inner='<div class="name">'+r.name+'</div><div class="rd">'+r.description+'</div>'+(r.url?(r.stars>0?'<div class="stars">★ '+r.stars.toLocaleString()+'</div>':''):'<div class="stars">Coming soon</div>');return r.url?'<a class="repo" href="'+r.url+'" target="_blank" rel="noopener">'+inner+'</a>':'<div class="repo">'+inner+'</div>';}).join("")+'</div>':"";
+  sec.innerHTML='<div class="wrap"><div class="col">'+badge+'<h2>'+s.title+'</h2><p class="sub">'+s.sub+'</p>'+desc+deep+repos+'</div></div>';
+  main.appendChild(sec);
+});
+
+const allRepos=SECTIONS.filter(s=>s.repos).flatMap(s=>s.repos);
+const footEl=document.createElement("footer");footEl.id="sec-footer";
+footEl.innerHTML='<div class="wrap"><div class="row">'
+  +'<img src="aisi-logo-red.png" alt="AISI — AI Security Institute" />'
+  +'<div class="os"><h4>Open source</h4><ul>'+allRepos.map(r=>'<li>'+(r.url?'<a href="'+r.url+'" target="_blank" rel="noopener">'+r.name+'</a>':r.name+' <span class="cs">(coming soon)</span>')+'</li>').join("")+'</ul></div></div></div>';
+main.appendChild(footEl);
+
+// scroll dots
+SECTIONS.filter(s=>!s.hero&&!s.footer).forEach(s=>{const b=document.createElement("button");b.title=s.id;b.dataset.id=s.id;b.dataset.line=s.line;
+  b.onclick=()=>document.getElementById("sec-"+s.id).scrollIntoView({behavior:"smooth"});dotsEl.appendChild(b);});
+
+/* ---------- hero #2: the scrollable thread (morphs per section) ---------- */
+const lanesvg=document.getElementById("lanesvg"),rail=document.getElementById("rail");
+const gLanes=document.getElementById("lanes"),gExtra=document.getElementById("extra");
+const paths=[];for(let k=0;k<N;k++){const el=document.createElementNS(NS,"path");gLanes.appendChild(el);paths.push(el);}
+const h2r=h=>{h=h.replace('#','');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];};
+const lerpCol=(a,b,m)=>{const A=h2r(a),B=h2r(b);return"rgb("+Math.round(A[0]+(B[0]-A[0])*m)+","+Math.round(A[1]+(B[1]-A[1])*m)+","+Math.round(A[2]+(B[2]-A[2])*m)+")";};
+const HOLD=0.66;
+const easeBack=x=>{const s=1.1;return 1+(s+1)*Math.pow(x-1,3)+s*Math.pow(x-1,2);};
+function drawExtra(spec,col,alpha){let el;
+  if(spec.t==="line"){el=document.createElementNS(NS,"path");el.setAttribute("d","M"+spec.x1+" "+spec.y1+" L"+spec.x2+" "+spec.y2);}
+  else{el=document.createElementNS(NS,"circle");el.setAttribute("cx",spec.cx);el.setAttribute("cy",spec.cy);el.setAttribute("r",spec.r);}
+  el.setAttribute("stroke",col);el.setAttribute("opacity",alpha.toFixed(3));gExtra.appendChild(el);}
+function renderLanes(i,frac,fade){
+  const j=Math.min(i+1,SECTIONS.length-1);
+  const raw=frac<=HOLD?0:(frac-HOLD)/(1-HOLD);
+  const m=i===j?0:easeBack(clamp(raw)),mc=clamp(m);
+  const A=SECTIONS[i],B=SECTIONS[j];
+  const op=A.op+(B.op-A.op)*mc;
+  for(let k=0;k<N;k++){const pts=[];
+    for(let s=0;s<=18;s++){const t=s/18,pa=A.pt(t,k),pb=B.pt(t,k);pts.push([pa[0]+(pb[0]-pa[0])*m,pa[1]+(pb[1]-pa[1])*m]);}
+    paths[k].setAttribute("d",smooth(pts));paths[k].setAttribute("stroke",lerpCol(A.line,B.line,mc));}
+  const railc=lerpCol(A.line,B.line,mc);
+  gExtra.textContent="";const base=0.6;
+  if(A.ex)A.ex().forEach(s=>drawExtra(s,railc,(1-mc)*op*base));
+  if(j!==i&&B.ex)B.ex().forEach(s=>drawExtra(s,railc,mc*op*base));
+  gLanes.style.opacity=(op*fade).toFixed(3);rail.style.background=railc;
+  const curId=SECTIONS[i].id;
+  [...dotsEl.children].forEach(d=>{const on=d.dataset.id===curId;d.setAttribute("aria-current",on);d.style.background=on?d.dataset.line:"#d1d5db";});
+}
+
+/* ---------- hero #1: the title field (draws away off the right, non-uniform) ---------- */
+const darkEl=document.getElementById("darkpanel"),herofield=document.getElementById("herofield");
+let HVP=[],HVL=[],HVPHASE=[],HVPOW=[];
+const frac1=n=>{const v=Math.sin(n)*43758.5453;return v-Math.floor(v);};
+function buildHero(){
+  const W2=Math.max(1,herofield.clientWidth),H2=Math.max(1,herofield.clientHeight),M=26;
+  herofield.setAttribute("viewBox","0 0 "+W2+" "+H2);herofield.replaceChildren();
+  const step=Math.max(12,W2/110);
+  for(let s=0;s<M;s++){const baseY=(s+0.5)/M*H2,ph=s*0.45,pts=[];
+    for(let x=-90;x<=W2+90;x+=step){pts.push([x,baseY+H2*0.016*Math.sin(x*0.0058+ph)+H2*0.008*Math.sin(x*0.013+ph*1.3)]);}
+    const el=document.createElementNS(NS,"path");el.setAttribute("d",smooth(pts));el.setAttribute("stroke",PAL[s%PAL.length]);
+    el.setAttribute("stroke-width","1.2");el.setAttribute("fill","none");el.setAttribute("vector-effect","non-scaling-stroke");el.setAttribute("stroke-linecap","round");
+    herofield.appendChild(el);}
+  HVP=[...herofield.querySelectorAll("path")];
+  HVL=HVP.map(p=>{const L=p.getTotalLength()||1;p.style.strokeDasharray=L;return L;});
+  HVPHASE=HVP.map((_,i)=>frac1(i*12.9898+1)*0.34);
+  HVPOW=HVP.map((_,i)=>0.55+frac1(i*78.233+7)*1.15);
+}
+function fitDark(){const hH=heroEl.offsetHeight+"px";darkEl.style.height=hH;herofield.style.height=hH;}
+
+let ticking=false;
+function onScroll(){
+  const cy=scrollY+innerHeight*0.5;let idx=0,frac=0;
+  for(let i=0;i<SECTIONS.length;i++){const el=document.getElementById("sec-"+SECTIONS[i].id);if(!el)continue;
+    const top=el.offsetTop,h=el.offsetHeight;if(cy>=top-1){idx=i;frac=clamp((cy-top)/h);}}
+  // thread hidden through the hero, fades in as you enter the content
+  const heroH=heroEl.offsetHeight, hp=clamp(scrollY/(heroH*0.85));
+  const laneFade=idx===0?0:idx===1?clamp(frac/0.25):1;
+  renderLanes(idx,frac,laneFade);
+  // title field draws away off the right
+  const dp=clamp(hp/0.7);
+  for(let i=0;i<HVP.length;i++){let fr=(dp-HVPHASE[i])/(1-HVPHASE[i]);fr=clamp(fr);fr=Math.pow(fr,HVPOW[i]);HVP[i].style.strokeDashoffset=(-HVL[i]*fr).toFixed(1);}
+  herofield.style.opacity=clamp(1-(hp-0.55)/0.25).toFixed(3);
+  darkEl.style.opacity=clamp(1-(hp-0.9)/0.1).toFixed(3);
+  const maxS=Math.max(1,document.documentElement.scrollHeight-innerHeight);rail.style.width=(scrollY/maxS*100)+"%";
+  ticking=false;
+}
+addEventListener("scroll",()=>{if(!ticking){requestAnimationFrame(onScroll);ticking=true;}},{passive:true});
+addEventListener("resize",()=>{fitDark();buildHero();onScroll();},{passive:true});
+fitDark();buildHero();renderLanes(0,0,0);onScroll();
+</script>
+</body>
+</html>

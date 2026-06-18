@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sandboxed Execution — AISI Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="deepdive.css" />
+</head>
+<body style="--accent:#0e7490">
+<header class="dvhero">
+  <svg id="herofield" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap"><div class="col">
+    <a class="backlink" href="index.html#isolate">← Back to overview</a>
+    <div><span class="badge"><span class="n">02</span> Isolate</span></div>
+    <h1>Sandboxed Execution</h1>
+    <p class="lede">Tiered containment that matches isolation to the risk each evaluation carries.</p>
+  </div></div>
+</header>
+
+<article>
+<div class="wrap"><div class="col">
+
+  <h2 class="sh">What is a sandbox?</h2>
+  <p class="p">Assessing a model's true capabilities involves creating evaluations that closely replicate tasks the model will be expected to do in deployment. As models' agentic capabilities have improved, these evaluations must attempt to simulate real-world agentic scenarios, like coding, using software tools, or interacting with the world via the internet.</p>
+  <p class="p">It's vital that evaluation environments are sufficiently isolated from real-world effects, especially in the assessment of model skills related to possible AI harms. Actions the model takes when under evaluation must not have real-world consequences. However, the more restrictive and empty an evaluation environment is, the less comparable it becomes to real-world systems, and the more likely the model is to detect it's not in a real situation (see our previous writing on "<a class="x" href="https://www.aisi.gov.uk/blog/investigating-models-for-misalignment" target="_blank" rel="noopener">evaluation awareness</a>").</p>
+  <p class="p">The intersection of these requirements (realistic simulation environments to assess model capabilities, and no real-world effects) requires technologies and techniques for "sandboxing", a mechanism to allow models high-trust levels of access to environments where their actions are isolated from real-world systems and will not have lasting impact.</p>
+  <p class="p">At AISI, we have multiple options for designing and deploying sandbox environments, all integrated with the Inspect AI evaluation framework. We have also developed and published a taxonomy of sandbox design, which helps us design the right level of freedom and restriction, balancing realistic simulations with harm prevention.</p>
+
+  <div class="callout"><div class="t">Disclaimer</div><p>This document reflects aspects of AISI's internal approach to sandboxing for agentic evaluations and is shared as a community resource to support AI security research. It does not constitute official UK government guidance on AI deployment security, nor does it guarantee complete protection against all risks associated with agentic AI systems. No sandboxing solution can provide 100% security assurance, and users should conduct their own risk assessments and implement additional safeguards as appropriate for their specific use cases. The UK National Cyber Security Centre <a class="x" href="https://www.ncsc.gov.uk/collection/cloud/understanding-cloud-services/technically-enforced-separation-in-the-cloud" target="_blank" rel="noopener">has published guidance</a> on workload isolation in the cloud.</p></div>
+
+  <h2 class="sh">Difficulties of isolation implementation</h2>
+  <p class="p">Evaluations that give models shell access, code execution, or network access need isolation to prevent unintended consequences from model actions.</p>
+  <p class="p">Evaluation environments should be granted the minimum permissions required for the evaluation to be solved in the intended fashion, and nothing more. Models shouldn't be given the ability to reach the internet, or execute arbitrary code, if it's not required for the specific evaluation.</p>
+  <p class="p">However, it's also not necessary or productive to use the most-hardened sandbox configuration for all evaluations when it isn't strictly necessary. The higher tiers of sandbox isolation create challenges in orchestration and configuration (for example, the additional latency in spinning up virtual machines) that may not be necessary for evaluations that have other restrictions in place.</p>
+  <p class="p">AISI tailors our sandbox environments and configuration for each evaluation, based on what's required for the model to solve the challenge.</p>
+
+  <h2 class="sh">Defining sandbox capability levels</h2>
+  <p class="p">Our sandboxing guidance provides an end-to-end approach to choosing and applying the right tools for certain kinds of evaluation. At AISI we define isolation in three independent dimensions:</p>
+  <ol class="steps">
+    <li><strong>Tooling (T)</strong>: Defines the agent's execution capabilities, including access to external APIs and file interactions.</li>
+    <li><strong>Host Isolation (H)</strong>: Defines the containment level of the execution environment in which the agent operates.</li>
+    <li><strong>Network Isolation (N)</strong>: Controls the agent's access to external networks and resources.</li>
+  </ol>
+  <p class="p">An evaluation might, for example, require unrestricted code execution but no network access, or full internet access but no local tools. The <a class="x" href="https://github.com/UKGovernmentBEIS/aisi-sandboxing" target="_blank" rel="noopener">aisi-sandboxing</a> protocol classifies each axis independently, creating a profile notation: <strong>Tx.Hx.Nx</strong>. Teams can then read a profile like <code>T0.H2.N1</code> as, for example, access to unrestricted tooling, Kubernetes with gVisor, and a domain-allowlist network.</p>
+  <p class="p"><strong>Tooling (T)</strong> controls what "tool calls" the model can execute. <code>T0</code> gives unrestricted execution, including shell, code interpreters, and file system access. <code>T1</code> restricts to a curated subset of tools. <code>T2</code> allows text-only interaction with no execution capabilities.</p>
+  <p class="p"><strong>Host (H)</strong> sets the boundary between the model's execution environment and the underlying infrastructure. <code>H0</code> is no isolation. <code>H1</code> indicates Docker or OCI containerisation, which gives process isolation but shares the host kernel. <code>H2</code> uses a shared host with more advanced container isolation, like Kubernetes with gVisor (a system that intercepts syscalls). <code>H3</code> is full VM isolation, with a separate kernel and separate memory space.</p>
+  <p class="p"><strong>Network (N)</strong> controls external connectivity. <code>N0</code> is full internet access. <code>N1</code> uses an allowlist of specific domains (using, for example, Cilium network policies on Kubernetes for enforcement), so the model can reach approved APIs but nothing else. <code>N2</code> indicates no external network access at all.</p>
+
+  <h2 class="sh">Tiers of Host Isolation</h2>
+  <p class="p">In AISI's usage, the three tiers of host isolation map onto concrete infrastructure configurations.</p>
+
+  <h3 class="sub">Docker Compose (H1)</h3>
+  <p class="p">Docker Compose is a lightweight system for managing and orchestrating Docker containers. It starts containers quickly, can mount local directories, and provides process-level isolation while sharing the host kernel. This makes it a good fit for standard low-risk evaluations where the model isn't actively trying to escape its environment, such as coding benchmarks, knowledge assessments, and reasoning tasks.</p>
+  <p class="p">Docker's networking does not support fine-grained domain allowlisting, so network access is either full internet, or no external networking.</p>
+
+  <h3 class="sub">Kubernetes + gVisor (H2)</h3>
+  <p class="p">AISI uses this tier for most of our agentic evaluations. The <a class="x" href="https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox" target="_blank" rel="noopener">inspect_k8s_sandbox</a> plugin can deploy evaluation sandboxes as Kubernetes pods, using gVisor as the container runtime. gVisor implements the Linux syscall interface in userspace, so containers make syscalls to gVisor rather than the host kernel.</p>
+  <p class="p">In Kubernetes, network providers like Cilium can support the N1 tier with domain allowlisting. This permits agents to reach approved domains, such as software package managers, while everything else remains blocked. Deployment and networking configuration is declared through a Helm chart.</p>
+
+  <h3 class="sub">Virtual Machines (H3)</h3>
+  <p class="p">A virtual machine is a stronger way to isolate workloads. VMs do not share a kernel or memory with the host or other VMs. AISI has implemented two Inspect plugins to support virtual machine sandboxes:</p>
+  <ol class="steps">
+    <li><a class="x" href="https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox" target="_blank" rel="noopener">inspect_proxmox_sandbox</a> uses the Proxmox hypervisor to provide software-defined networking, snapshot capabilities, and full lifecycle management.</li>
+    <li><a class="x" href="https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox" target="_blank" rel="noopener">inspect_ec2_sandbox</a> uses AWS EC2 instances with SSM for command execution and S3 for file transfer.</li>
+  </ol>
+
+  <h2 class="sh">Repositories</h2>
+  <div class="repos" id="repos"></div>
+
+  <a class="x" href="index.html#isolate" style="font-size:.9rem;font-weight:600;text-decoration:none">← Back to overview</a>
+</div></div>
+</article>
+
+<script>
+window.DD={
+  edit:"https://linear.app/aisi/document/deep-dive-isolate-sandboxed-execution-e3e1313a46c8",
+  line:"#15EAEA", shape:"straight", extra:"grid",
+  repos:[
+    {name:"aisi-sandboxing",url:"https://github.com/UKGovernmentBEIS/aisi-sandboxing",description:"Sandboxing toolkit with a published protocol for assessing isolation requirements across three axes.",stars:19},
+    {name:"inspect_k8s_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox",description:"Kubernetes sandbox for Inspect with Cilium network policies and gVisor container isolation.",stars:26},
+    {name:"inspect_proxmox_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox",description:"Proxmox VM sandbox with SDN networking and snapshot capabilities.",stars:4},
+    {name:"inspect_ec2_sandbox",url:"https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox",description:"AWS EC2 VM sandbox using SSM for command execution and S3 for file transfer.",stars:1},
+  ],
+};
+</script>
+<script type="module" src="deepdive.js"></script>
+</body>
+</html>

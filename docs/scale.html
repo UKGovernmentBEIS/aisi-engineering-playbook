@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Supercomputer-Scale Inference — AISI Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="deepdive.css" />
+</head>
+<body style="--accent:#4f7d97">
+<header class="dvhero">
+  <svg id="herofield" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap"><div class="col">
+    <a class="backlink" href="index.html#scale">← Back to overview</a>
+    <div><span class="badge"><span class="n">05</span> Scale</span></div>
+    <h1>Supercomputer-Scale Inference</h1>
+    <p class="lede">Cloud-native workflows and reproducible inference on a High-Performance Computing cluster.</p>
+  </div></div>
+</header>
+
+<article>
+<div class="wrap"><div class="col">
+
+  <h2 class="sh">Introduction</h2>
+  <p class="p">AI models are growing in both size and capability, and the tasks they perform are growing in length and complexity (<a class="x" href="https://www.aisi.gov.uk/research/aisi-frontier-ai-trends-report-2025" target="_blank" rel="noopener">Frontier AI Trends Report</a>). AISI's evaluations and experiments increasingly require self-hosted models, fine-tuning experiments, and sometimes training from scratch. At the same time, the number of researchers and experiments AISI supports is growing, and new models are released at a rapid pace set by the labs. Our research needs to keep up if it is to remain relevant.</p>
+  <p class="p">Isambard-AI, the UK's national AI supercomputer, gives us the raw GPU capacity to keep up. But integrating a supercomputer into an existing cloud platform without disrupting researcher workflows is hard. The existing platform runs on AWS, and researchers have built workflows around EC2 instances, Docker containers, and Kubernetes. Porting those workflows to a High-Performance Computing (HPC) environment takes significant effort, and maintaining two separate ways of working creates friction that slows everything down.</p>
+  <p class="p">In development of workflows for our Research Platform and on Isambard, we are aiming for <strong>platform consistency</strong>: Isambard should feel like a natural extension of the AISI Research Platform, with the same IDE, tooling, workflows, and security model. Knowledge about how to build, deploy, and validate workloads on HPC is captured in declarative, version-controlled configuration so that when one person solves a problem, everyone benefits.</p>
+  <p class="p">We have built a suite of software tools to support our workflows across environments. We plan to open-source many of these tools soon.</p>
+
+  <h2 class="sh">The tools</h2>
+  <table class="tbl">
+    <thead><tr><th>Problem</th><th>Tool</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Researchers need to start working on Isambard quickly without learning HPC workflows</td><td class="mono">AISI CLI</td><td>Wraps auth, bootstrapping, and VS Code tunnels into a few commands. Same experience as AWS dev VMs.</td></tr>
+      <tr><td>Supporting a growing number of diverse workloads while keeping them reproducible and portable</td><td class="mono">Sifter</td><td>Declarative container builds with dependency tracking and a shared S3 registry. Build once, share with everyone.</td></tr>
+      <tr><td>Every new model requires figuring out the right multi-node configuration from scratch</td><td class="mono">Model Serving</td><td>Declarative YAML recipes capture hardware-specific serving configs. One command launches a multi-node SLURM job.</td></tr>
+      <tr><td>Workloads on Isambard need to be securely exposed to researchers and tools across the entire platform</td><td class="mono">Gimlet</td><td>Reverse HTTP tunnel with JWT auth via AWS KMS. Services bind to localhost. Gimlet provides authenticated access from anywhere on the platform.</td></tr>
+      <tr><td>Validating that a model deployment is working correctly is manual and time-consuming</td><td class="mono">MBench</td><td>Smoke tests and load tests captured as config files. One command, reproducible results.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="diagram"><div class="mermaid" data-chart="workflow"></div>
+    <p class="cap">The end-to-end workflow for deploying a model on Isambard.</p></div>
+  <p class="p">Each tool works independently, but together they make a supercomputer feel like part of the platform.</p>
+
+  <h2 class="sh">Deep dives</h2>
+
+  <h3 class="sub">AISI CLI</h3>
+  <p class="p">The existing development environments are EC2 instances. A researcher runs a single command to create a VS Code tunnel to a VM in AWS. HPC workflows are optimised for ad-hoc usage and asynchronous jobs, not persistent dev environments. Getting a comparable setup means manually installing certificates, setting up your dev tooling, and submitting SLURM jobs to create a VS Code tunnel on a compute node. That friction disrupts productivity and slows adoption.</p>
+  <p class="p">It's also easy to make security mistakes. HPC clusters are shared, so configuring file permissions incorrectly means another user can read your data. Researchers used to isolated cloud VMs don't necessarily think about that, and worrying about it slows people down too.</p>
+  <p class="p">The AISI CLI is a command-line tool that researchers use to manage their development environments. On AWS, it gives researchers an interactive VS Code session on an EC2 instance in a couple of commands. The <code>isambard</code> subcommand extends it to Isambard in an attempt to mirror the experience. It handles auth, bootstraps dev tooling, and allows users to provide custom setup scripts to configure their personal tooling in a reproducible way. Secure defaults like <code>umask 0077</code> (which ensures new files are only readable by their owner) are preconfigured, so researchers don't have to think about them.</p>
+  <table class="tbl">
+    <thead><tr><th></th><th>AWS</th><th>Isambard</th></tr></thead>
+    <tbody>
+      <tr><td class="lbl">First time</td><td class="cmd">aisi instance create --type g6.xlarge --script my-setup.sh</td><td class="cmd">aisi isambard setup --bootstrap --script my-setup.sh — installs certs, bootstraps tooling, sets umask, runs personal setup script</td></tr>
+      <tr><td class="lbl">Daily</td><td class="cmd">aisi instance tunnel — VS Code opens</td><td class="cmd">aisi isambard setup then aisi isambard tunnel --gpus 2 --time 8h — refreshes certs, submits SLURM job, VS Code opens, GPUs attached</td></tr>
+    </tbody>
+  </table>
+  <p class="p">Researchers now work across AWS and Isambard as though they are part of the same platform. Environment configuration is captured in setup scripts rather than manual steps, so it's reproducible across sessions and shareable between researchers. Some power users run <code>aisi isambard tunnel</code> as their morning routine and develop on Isambard for the entire day.</p>
+
+  <h3 class="sub">Sifter</h3>
+  <p class="p">Unlike cloud VMs, where each researcher controls their own machine, HPC is shared infrastructure. The CUDA driver, the networking stack, and the filesystem are managed at the cluster level. Porting a workload that ran fine on EC2 demands a lot of effort to satisfy those constraints. Getting the compilation flags, CUDA compatibility layers, and networking configuration right requires expertise. Containers are a natural solution that enable packaging everything above the driver level into a reproducible image. Docker doesn't run on HPC (no root access), but Apptainer does.</p>
+  <p class="p">We built an initial monorepo of Apptainer definitions, which helped build our workflow but had limitations. As Isambard adoption scaled and the number of workloads grew, so did the number of container variants: different inference engines, CUDA compatibility layers, and model-specific configurations. Containers also layer on each other. A base PyTorch image, an inference engine like vLLM built on top, a specific model setup on top of that. Making a change to the base image means everything downstream needs rebuilding.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="containers"></div>
+    <p class="cap">Container variants multiply as CUDA versions, PyTorch versions, and inference engines combine. A change to any base image cascades downstream.</p></div>
+
+  <p class="p">At AISI, container images are typically built and tested in CI. For Isambard, containers need to be built and tested on the cluster itself to ensure they work against its specific drivers and hardware. Configuring CI to submit and manage jobs on an HPC cluster is not straightforward, so builds were manual: figure out which images are affected by a change, work out the right build order, wait for each build to complete before starting the next. That process became tedious and broke down as the number of variants grew.</p>
+  <p class="p">Sifter makes Apptainer builds easy and reproducible on Isambard. A <code>sifter.yaml</code> manifest declares every container, its dependencies, and its build parameters. When you run <code>sifter build --all</code>, it constructs a dependency graph, works out what's changed, and submits the affected builds to SLURM as a chain of dependent jobs. SLURM handles the parallelism and ordering.</p>
+  <p class="p">This produces a shared library of container images that are reproducible, tested on the target hardware, and easy to maintain. Details like native Slingshot networking configuration are baked into the container builds so that researchers don't have to figure them out themselves. Porting a workload to Isambard becomes a one-time cost: one person gets it working in a container, publishes it to a remote registry, and everyone else can consume it immediately. The workflow mirrors how researchers already build and share Docker images on AWS, just adapted for HPC constraints.</p>
+
+  <h3 class="sub">Model Serving</h3>
+  <p class="p">The largest open-weight models don't fit on a single GPU and need to be distributed across multiple GPUs, often across multiple nodes. One approach at AISI is to use vLLM for serving, Ray for multi-node coordination, and SLURM for GPU allocation. Tensor parallelism splits model layers across GPUs within a node over NVLink, while pipeline parallelism distributes stages across nodes over the Slingshot interconnect. But there are many more parallelism strategies (data, expert, context) that can be combined in different ways depending on the model architecture and serving requirements, and some models need specific backends, attention kernels, or quantisation schemes on top of that. Isambard has 4 GPUs per node, which is unusual. Most of the industry assumes 8, so published deployment recipes and inference engines often don't work out of the box. Getting this right matters, because evaluations for frontier models can involve long, multi-turn interactions, and inefficient serving doesn't just waste compute, it delays results.</p>
+  <p class="p">The vLLM Apptainer container (built and maintained via Sifter) provides the inference runtime. <code>vllm-serve</code> is a lightweight CLI that sits on top of it, reading declarative YAML model recipes and translating them into multi-node SLURM jobs with the right configuration. Each recipe captures the parallelism strategy, backend, quantisation scheme, and any model-specific flags needed to serve that model on Isambard's hardware. Running <code>vllm-serve &lt;model&gt;</code> looks up the recipe and handles the rest. When a new model is released, someone develops the right configuration, adds a YAML entry, and adds it to our repository of shared definitions. The recipe library currently covers 100+ models and grows with every new deployment.</p>
+  <pre class="code"><span class="lang">yaml</span># Model recipes for Isambard (4x H200 GPUs per node)
+
+model-a/Model-A-70B-Instruct:
+  vllm_args:
+    tensor_parallel_size: 4
+    enable_auto_tool_choice: true
+    tool_call_parser: model_a
+
+model-b/Model-B-700B-Instruct:
+  vllm_args:
+    tensor_parallel_size: 4
+    pipeline_parallel_size: 4
+    enable_expert_parallel: true
+    quantization: fp8
+    kv_cache_dtype: fp8
+
+model-c/Model-C-400B-MoE:
+  vllm_args:
+    tensor_parallel_size: 4
+    pipeline_parallel_size: 2
+    enable_expert_parallel: true
+    max_num_batched_tokens: 8192</pre>
+  <p class="p">The effort of figuring out how to serve a model on Isambard's hardware is a one-time cost. Once someone has worked out the right configuration, every other researcher who needs that model gets it without having to understand the underlying parallelism or SLURM mechanics. For them, it's a single command: <code>vllm-serve &lt;model&gt;</code>.</p>
+
+  <h3 class="sub">Gimlet</h3>
+  <p class="p">The scale of compute on Isambard is most valuable when researchers can easily consume the workloads running on it from across the entire platform. Consider this common scenario. A team has deployed a new model on Isambard and wants researchers on AWS dev VMs to run evaluations against it using their usual tools. Or a researcher running a service on one Isambard node needs to reach it from another. HPC clusters don't accept inbound HTTP traffic, and binding a service to <code>0.0.0.0</code> on a shared cluster exposes it to hundreds of users across institutions. For sensitive work, that's not acceptable.</p>
+  <p class="p"><a class="x" href="https://github.com/UKGovernmentBEIS/gimlet" target="_blank" rel="noopener">Gimlet</a> solves this using a reverse HTTP tunnel. The workflow for exposing a service is: bind it to <code>localhost</code>, generate a token with <code>gimlet jwt agent</code>, and start the agent pointing at your service. The agent makes an outbound WebSocket connection to a Gimlet server running in AWS. On the consuming side, researchers generate a client token with <code>gimlet jwt client</code> and make standard HTTP requests to the server with it as a bearer token. The server relays requests through the tunnel to the service on Isambard. The service is never exposed to the cluster, and researchers consuming it don't need to know anything about the underlying networking.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="gimlet"></div>
+    <p class="cap">Both sides connect to the Gimlet server. The tunnel initiates outbound from Isambard, so no inbound firewall rules are needed.</p></div>
+
+  <p class="p">Tokens are JWTs signed by AWS KMS keys that live within specific project namespaces, the same boundaries that govern everything else in the platform. If a researcher has access to a project in AWS, they can expose and consume services on Isambard through Gimlet without separate credentials or access requests. Tokens are scoped to specific services and have short lifetimes, typically 24 hours. From a researcher's perspective, accessing a service on Isambard feels no different to accessing one on AWS.</p>
+
+  <h3 class="sub">MBench</h3>
+  <p class="p">A model that starts and responds to requests isn't necessarily working correctly. The networking stack might have silently fallen back to TCP, tool calls might be broken, or performance might degrade under concurrent load. Discovering these issues mid-evaluation means wasted compute and potentially having to start from scratch. Without a consistent validation process, these checks are ad-hoc and the same problems get rediscovered by different people.</p>
+  <p class="p">MBench applies the same pattern as the rest of the tooling: capture validation in declarative config files so it's reproducible and shareable. A single config file declares the endpoint, dataset, load parameters, and the checks to run. One command exercises the deployment across functional tests (are responses well-formed, do tool calls work) and load tests (throughput and latency at increasing concurrency). It integrates natively with Gimlet, handling JWT auth automatically when pointed at a Gimlet URL.</p>
+  <pre class="code"><span class="lang">json</span>{
+  "name": "model-a-validation",
+  "base_url": "https://gimlet.apps.aisi.org.uk/services/model-a/v1",
+  "api_key": {
+    "gimlet": {
+      "kms_key_arn": "arn:aws:kms:..."
+    }
+  },
+  "model": "model-a",
+  "endpoint": "/chat/completions",
+  "parallelism": [1, 2, 4, 8, 16],
+  "duration_s": 300,
+  "stream": true,
+  "max_completion_tokens": 200,
+  "dataset": {
+    "name": "HuggingFaceH4/ultrachat_200k",
+    "split": "train_sft",
+    "prompt_field": "prompt"
+  }
+}</pre>
+  <p class="p">Validation becomes a versioned, repeatable step, rather than a manual process. The same config file can run against every new deployment, whether on Isambard or AWS, so regressions are caught early and nobody wastes time rediscovering known issues.</p>
+
+  <h2 class="sh">Repositories</h2>
+  <div class="repos" id="repos"></div>
+
+  <a class="x" href="index.html#scale" style="font-size:.9rem;font-weight:600;text-decoration:none">← Back to overview</a>
+</div></div>
+</article>
+
+<script>
+window.DD={
+  edit:"https://linear.app/aisi/document/deep-dive-scale-supercomputer-scale-inference-b2ca5782bbf0",
+  line:"#7EB1CB", shape:"fan", extra:"nodes",
+  charts:{
+    workflow:`flowchart LR
+    A["Set up environment<br/>AISI CLI"] --> B["Build containers<br/>Sifter"] --> C["Serve models<br/>vllm-serve"] --> D["Expose securely<br/>Gimlet"] --> E["Validate<br/>MBench"]
+    classDef step fill:#e6f0ff,stroke:#3366aa;
+    class A,B,C,D,E step;`,
+    containers:`graph TD
+    P[PyTorch] --> A1[CUDA 12.6<br/>PyTorch 2.9]
+    P --> A2[CUDA 12.6<br/>PyTorch 2.10]
+    P --> A3[CUDA 12.9<br/>PyTorch 2.10]
+    A1 --> B1[vLLM 0.17]
+    A1 --> B2[SGLang 0.4]
+    A2 --> B3[vLLM 0.18]
+    A3 --> B4[vLLM 0.18]
+    A3 --> B5[SGLang 0.4]`,
+    gimlet:`graph LR
+    subgraph Isambard
+        direction LR
+        Service["Service (localhost:8000)"] --> Agent["Gimlet Agent"]
+    end
+    subgraph AWS
+        direction LR
+        Server["Gimlet Server"]
+        Client["Researcher's dev VM"]
+    end
+    Agent -- "outbound WebSocket" --> Server
+    Client -- "HTTPS" --> Server`,
+  },
+  repos:[
+    {name:"gimlet",url:"https://github.com/UKGovernmentBEIS/gimlet",description:"Reverse HTTP tunnel for exposing services from private networks. Go, with JWT auth and Prometheus metrics.",stars:3},
+  ],
+};
+</script>
+<script type="module" src="deepdive.js"></script>
+</body>
+</html>

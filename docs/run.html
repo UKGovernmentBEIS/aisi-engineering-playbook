@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Research Platform — AISI Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="deepdive.css" />
+</head>
+<body style="--accent:#8b63c4">
+<header class="dvhero">
+  <svg id="herofield" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap"><div class="col">
+    <a class="backlink" href="index.html#run">← Back to overview</a>
+    <div><span class="badge"><span class="n">04</span> Run</span></div>
+    <h1>The Research Platform</h1>
+    <p class="lede">The platform researchers work from, with their tools, data, and compute already in place.</p>
+  </div></div>
+</header>
+
+<article>
+<div class="wrap"><div class="col">
+
+  <h2 class="sh">Developer platform vs research platform</h2>
+  <p class="p">A developer platform helps you write and ship code. You could do that on your own machine, or with an off-the-shelf product like <a class="x" href="https://github.com/features/codespaces" target="_blank" rel="noopener">GitHub Codespaces</a>. Either way, little has to be built. The hard parts are a runtime, an editor, version control, and a way to deploy, and those are much the same wherever you work. To run a research workflow end to end, a research platform has to do much more.</p>
+  <p class="p">The valuable, sensitive material is the research data, the model weights, and access to specialised compute like GPUs. None of this belongs on a laptop, and it cannot be served by an off-the-shelf coding environment. So on top of the developer platform basics, a research platform manages research data, controls who can reach which project's data and models, and gives researchers GPUs and other large-scale compute.</p>
+  <p class="p">Depending on the nature of the research, a single piece of work might involve running evaluations against a frontier model, fine-tuning a model and then evaluating the fine-tuned version, pulling a few thousand evaluation logs out of storage to derive metrics, or building a small web application the rest of the team can open in a browser. These happen in different orders and combinations, and the same researcher will do several of them in a week.</p>
+  <p class="p">This section walks through the infrastructure AISI has built for that, and the design choices behind it. The thread running through all of it is what a small platform team can sustainably own. Not building each researcher's environment by hand, and not operating every application on their behalf, but shipping a set of composable building blocks that researchers can assemble themselves.</p>
+
+  <h2 class="sh">Constraints and challenges</h2>
+
+  <h3 class="sub">The managed laptop</h3>
+  <p class="p">At AISI, a researcher's starting point is their government-issued laptop, which is centrally managed. That gives you a known security baseline and central monitoring out of the box. The cost of this is researchers not having admin access, and only installing software from a short allowlist. Turning each laptop into a real development machine through exceptions would be slow and leave a fleet of subtly different machines, so the workable answer is to develop code somewhere other than the laptop.</p>
+
+  <h3 class="sub">Research data and access control</h3>
+  <p class="p">Research runs on data that cannot sit on a laptop: a large corpus of evaluation logs, datasets, and model weights, often shared across a team. That data also carries boundaries. Some is sensitive, whilst some might belong to one project and not another. A researcher should reach exactly what their work needs and nothing more. The platform has to hold this material centrally, make it fast to reach from wherever research runs, and enforce who can see which project's data and models, without the researcher handling credentials or copying sensitive files by hand.</p>
+
+  <h3 class="sub">Specialised compute</h3>
+  <p class="p">If a researcher is fine-tuning a model, hosting an open-weights model for inference, or running a GPU-bound workload, this work will need hardware a managed laptop won't have. A researcher who needs a GPU machine should get one through the same path and the same identity they use for an ordinary development machine, without a separate request process for each kind of compute. If you now scale this up to a supercomputer-size cluster then inference is a harder problem to solve (see <a class="x" href="scale.html">Scale</a>). In either case, what matters here is that everyday access to GPU resources is part of the platform.</p>
+
+  <h3 class="sub">Deployment</h3>
+  <p class="p">Throughout the research lifecycle a tool or application is often needed to progress work. This could be an app for running a human-subject study, an internal tool that makes a workflow faster, or a dashboard that shares findings with the team. In every case the researcher has working code and needs it running somewhere the team can reach, and keep reaching, well after the experiment is done. To start with it needs a name in the domain name system and an encrypted connection, so that's a certificate. Then it needs somewhere to run, with a load balancer routing to it and health checks so a failed instance gets replaced. And it usually needs a database in a private network, backed up and reachable only by the application, whilst logs, metrics, and a way to ship a new version without downtime must all be there too. None of this stack is research, but all of it must be designed and built before anyone else can open the application.</p>
+
+  <h3 class="sub">What a small platform team can own</h3>
+  <p class="p">At AISI's size, the constraints above can be met in two ways that both break down. If each researcher solves for every constraint from scratch, then every application becomes hundreds of lines of fiddly infrastructure code. This code is easy to get subtly wrong, in ways that only surface as incidents, and any improvement made in one application stays trapped there. If instead a small platform team builds and operates everything on researchers' behalf, that team becomes the bottleneck for every piece of research that touches infrastructure, and the cost grows with every new application. The approach that holds is for the platform team to build and own a small, opinionated set of reusable building blocks, and for researchers to compose those blocks into their own applications.</p>
+
+  <h2 class="sh">The architecture</h2>
+  <p class="p">These building blocks get a researcher onto a capable machine with their tools and data already in place, and then deploy what they build on it. Three of the building blocks handle the machine and its data, and the fourth handles deployment. A researcher logs in, lands on a ready machine, reaches the data and compute their project allows, and composes a short stack file to deploy what they have built.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="architecture"></div>
+    <p class="cap">The researcher's path end to end. Federated login mints short-lived credentials, the CLI provisions a machine (development or GPU) from the golden AMI, that machine reaches only its project's data under a scoped identity, and a short stack file deploys the application.</p></div>
+
+  <h3 class="sub">Getting onto compute</h3>
+  <p class="p">The starting point is a command-line tool on the managed laptop. The researcher logs in against the organisation's identity provider, completes a multi-factor challenge, and the tool exchanges the result for short-lived cloud credentials that expire in hours. Every later command uses those credentials, so there is no long-lived cloud key on the laptop. The same tool owns the lifecycle of the machine the researcher actually works on. One command provisions a development machine, and another opens a tunnel so the local editor attaches to the remote filesystem and terminal as if the project were local. A GPU machine comes through the same command on the same identity, so specialised compute is a parameter rather than a separate request.</p>
+  <p class="p">That tool runs against a near-bare standard-library Python interpreter, with no third-party runtime dependencies, because adding packages to a managed laptop is slow or unpredictable. The laptop side is then a thin client, and a backend with full access to the cloud software development kit does the real work. Features ship on the backend without anyone updating local tooling, a bad release is reverted server-side, and the review surface for each change stays small. The cost is that the tool does little on its own and assumes the backend is reachable, which is the right trade for a fleet of locked-down laptops. The pattern of trading a long-lived key for a federated login and short-lived credentials is portable, while the specific identity provider and cloud are AISI's.</p>
+
+  <h3 class="sub">The golden AMI</h3>
+  <p class="p">A machine is only useful once the researcher's tools are on it, and installing them by hand turns every new machine into more than a day's worth of setup. Instead every development machine boots from one maintained image, the golden AMI (Amazon Machine Image), carrying the standard developer runtime, cloud tooling already pointed at the team and project resources the researcher can reach, AI coding assistants, and the platform's security baseline. The researcher opens a terminal and the environment is ready, and crucially the same on every machine.</p>
+  <p class="p">The harder part of that image is credentials. AI coding assistants need a model key to work, and the researcher doesn't hold the key. A small helper on the machine fetches a short-lived key from a central store at runtime, and the assistant is configured so that environment variables cannot be used to bypass the helper. Rotation and revocation happen centrally, and the researcher's setup does not change when either does. This is the part of the platform closest to something a reader could assemble from existing products, since a maintained image and a managed development machine are well-trodden ground. What the image gives up is bespoke setup, since a researcher is on the platform's image and its version rather than a machine tuned to their taste. Whilst some will miss this, the payoff is that every machine gets the next security fix the moment the image rolls forward.</p>
+
+  <h3 class="sub">Data and access-control model</h3>
+  <p class="p">A ready machine has to reach the right data, and only the right data. The platform runs each machine under the researcher's federated identity, so the cloud tooling on it can reach the team and project storage that identity is allowed to reach and nothing else, with no access keys on disk and no files copied down by hand. Access is scoped by project and team, so a researcher reaches what their work needs while sensitive material stays bounded to the people who should see it.</p>
+  <p class="p">The mechanics of how those boundaries are drawn and enforced are deliberately out of scope for a public page. What transfers is the principle of running researcher workloads under a federated identity scoped to a project, so that access follows from who someone is rather than from the credentials they carry.</p>
+
+  <h3 class="sub">The construct library</h3>
+  <p class="p">A finished web application, whether it runs a study, supports a workflow, or shares findings, still needs everything in the deployment constraint before anyone else can open it. We developed a construct library for <a class="x" href="https://docs.aws.amazon.com/cdk/v2/guide/home.html" target="_blank" rel="noopener">AWS CDK</a> (Cloud Development Kit) - an internal Python package that turns that long list of requirements into a few opinionated building blocks: a containerised web application reachable at a subdomain, a database carved from a shared cluster or a dedicated instance, a managed cache, and a scoped role for deployment. Each block is a single class with a typed interface, and from it the library produces the load-balancer rules, the task definitions, the network configuration, the identity and access management, the domain name, and the certificate, with the platform's defaults already applied.</p>
+  <p class="p">A researcher's whole application is then a short composition of those blocks:</p>
+  <pre class="code"><span class="lang">python</span>class StudyAppStack(Stack):
+    def __init__(self, ...):
+        super().__init__(...)
+
+        # A dedicated database for study responses.
+        db = DedicatedDatabase(self, "Database", name="study_responses")
+
+        # The app, reachable at study.&lt;platform-domain&gt;.
+        ContainerisedWebApp(
+            self, "StudyApp",
+            subdomain="study",
+            containers=[Container.from_asset("./app", port=8080)],
+            environment={"DATABASE_HOST": db.endpoint},
+            secrets={"DATABASE_PASSWORD": db.password_secret},
+        )</pre>
+  <p class="p">This is around thirty lines, most of which is configuration for the application container. The researcher writes no networking, load-balancer rules, container orchestration, identity and access management, or domain configuration, and the deployment itself runs on short-lived federated credentials rather than a static key stored in the repository. The library matters because it consolidates the work so that a security improvement to how deploy roles are scoped is one change against the library rather than a migration across every application repository. Opinions about log retention, rollback, and permissions then accumulate in one place. The trade-off is that a researcher on the library is constrained to the shapes it supports. An application that needs something unusual, such as a protocol the shared load balancer does not route, or a region outside the platform's footprint, has to extend the library or step outside it. In these more unusual cases the platform team gets involved directly.</p>
+
+  <h2 class="sh">The broader picture</h2>
+  <p class="p">This layer is central as the platform is where all the other layers are used from. Model access on a development machine works through the proxy pattern described in <a class="x" href="connect.html">Connect</a>. Doing inference at supercomputer-scale, the harder version of the specialised-compute constraint, has its own answer in <a class="x" href="scale.html">Scale</a>. The evaluations a researcher runs from a platform machine provision the sandboxes described in <a class="x" href="evaluate.html">Evaluate</a> and <a class="x" href="isolate.html">Isolate</a>, and the platform is where that run is launched, watched, and its logs collected.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="broader"></div>
+    <p class="cap">Run is the hub the other layers are used from. Model access (Connect), large-scale inference (Scale), and launching evaluations with their sandboxes (Evaluate and Isolate) are all reached from a platform machine.</p></div>
+
+  <h2 class="sh">What transfers</h2>
+  <p class="p">Unlike the other sections in this playbook, you'll notice this section does not contain open-source tools that you can install and use. AISI's Research Platform is internal to AISI and built on AWS and UK government IT, so the value of this section is in the patterns, rather than the code. The specific cloud, identity provider, and hardware are AISI-specific, but federating login to short-lived credentials, maintaining a single machine image (with credentials fetched at runtime), and maintaining a small composable infrastructure library, are useful patterns for other organisations.</p>
+
+  <a class="x" href="index.html#run" style="font-size:.9rem;font-weight:600;text-decoration:none">← Back to overview</a>
+</div></div>
+</article>
+
+<script>
+window.DD={
+  edit:"https://linear.app/aisi/document/deep-dive-run-the-research-platform-fb21080cd7ea",
+  line:"#AF93D2", shape:"weave", extra:"rungs",
+  charts:{
+    architecture:`flowchart LR
+    LAP["Managed laptop<br/>thin CLI"]
+    ID(["Federated identity<br/>+ MFA"])
+    subgraph PLAT["Research platform"]
+        direction TB
+        VM["Dev / GPU machine<br/>(golden AMI)"]
+        DATA[("Project data<br/>&amp; model weights")]
+        APP["Deployed application"]
+        VM -- "scoped identity" --> DATA
+        VM -- "stack file" --> APP
+    end
+    LAP -- "login" --> ID
+    ID -. "short-lived creds" .-> LAP
+    LAP -- "provision + tunnel" --> VM
+    classDef laptop fill:#dfd,stroke:#5a5;
+    classDef id fill:#fff7d6,stroke:#b08900;
+    classDef plat fill:#f3effe,stroke:#8b5cf6;
+    classDef data fill:#ede5fd,stroke:#8b5cf6,stroke-width:2px;
+    class LAP laptop;
+    class ID id;
+    class VM,APP plat;
+    class DATA data;`,
+    broader:`flowchart TB
+    RUN["RUN<br/>the platform machine<br/>a researcher works from"]
+    CONNECT["Connect<br/>model access via the proxy"]
+    SCALE["Scale<br/>supercomputer-scale inference"]
+    EVAL["Evaluate + Isolate<br/>launch evals, provision sandboxes"]
+    RUN --- CONNECT
+    RUN --- SCALE
+    RUN --- EVAL
+    classDef run fill:#8b5cf6,stroke:#6b3fb0,color:#fff,stroke-width:2px;
+    classDef other fill:#f4f4f4,stroke:#999,color:#333;
+    class RUN run;
+    class CONNECT,SCALE,EVAL other;`,
+  },
+  repos:[],
+};
+</script>
+<script type="module" src="deepdive.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+/* Shared styles for the static deep-dive pages. Each page sets --accent + --line on <body>. */
+:root{
+  --surface:#ffffff; --raised:#f4f4f5; --border:#e4e4e7; --border-strong:#d4d4d8;
+  --ink:#18181b; --sec:#3f3f46; --muted:#71717a; --dark:#0d1119;
+  --accent:#2f6fe0;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--surface);color:var(--ink);line-height:1.6;
+     font-family:"Onest","Inter",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+h1,h2,h3{letter-spacing:-.02em;line-height:1.15;margin:0}
+
+/* dark hero-field header (left-anchored, second-hero pattern fills the right) */
+.dvhero{position:relative;background:var(--dark);color:#fff;overflow:hidden;padding:4.5rem 0 4rem}
+.dvhero .wrap{margin:0;padding:0 1.5rem 0 clamp(1.5rem,12vw,15rem);max-width:52rem;position:relative;z-index:2}
+.dvhero .col{max-width:42rem}
+#herofield{position:absolute;top:0;left:calc(clamp(1.5rem,12vw,15rem) + 30rem);right:0;bottom:0;z-index:0;overflow:hidden;pointer-events:none;opacity:.6;
+  animation:hf-fade-in .8s ease both;
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 30%);mask-image:linear-gradient(to right,transparent 0,#000 30%)}
+@keyframes hf-fade-in{from{opacity:0}to{opacity:.6}}
+#herofield path,#herofield circle{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round}
+.backlink{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:#ffffff8c;text-decoration:none;margin-bottom:2rem}
+.backlink:hover{color:#fff}
+.editlink{position:fixed;top:1.1rem;right:1.1rem;z-index:50;display:inline-flex;align-items:center;gap:.4rem;
+  font-size:.78rem;font-weight:600;color:#fff;text-decoration:none;
+  padding:.5rem .85rem;border-radius:999px;background:var(--accent);
+  box-shadow:0 2px 12px rgba(0,0,0,.22);transition:transform .15s ease,box-shadow .15s ease}
+.editlink:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(0,0,0,.28)}
+.editlink svg{width:13px;height:13px;display:block}
+.badge{display:inline-flex;align-items:center;gap:.5rem;font-size:.8rem;font-weight:600;padding:.3rem .7rem;border-radius:999px;background:#ffffff1f;color:#fff}
+.badge .n{font-variant-numeric:tabular-nums;opacity:.7}
+.dvhero h1{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:700;margin:1rem 0 .7rem}
+.dvhero .lede{font-size:1.1rem;color:#ffffffc2;max-width:38rem}
+
+/* article body — centred reading column */
+article{padding:3.5rem 0 4rem}
+article .wrap{margin:0 auto;max-width:50rem;padding:0 1.5rem}
+.col{max-width:42rem;margin:0 auto}
+h2.sh{font-size:clamp(1.25rem,2.5vw,1.6rem);font-weight:700;margin:3.5rem 0 1rem}
+h2.sh:first-child{margin-top:0}
+h3.sub{font-size:1.05rem;font-weight:600;margin:2.2rem 0 .8rem}
+p.p{font-size:.95rem;color:var(--sec);margin:0 0 1rem}
+.col a.x{color:var(--accent);text-decoration:none}
+.col a.x:hover{text-decoration:underline}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.82em;background:#f4f4f5;padding:.1em .35em;border-radius:4px}
+pre.code{background:#0d1117;color:#d9dde3;border:1px solid var(--border);border-radius:.6rem;padding:1rem 1.1rem;overflow-x:auto;margin:0 0 1.5rem;font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.6;white-space:pre}
+pre.code .lang{display:block;color:#6b7280;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.6rem}
+.constraints{display:flex;flex-direction:column;gap:1.3rem;margin:0 0 2.5rem}
+.constraint{border-left:2px solid var(--accent);padding-left:1.2rem}
+.constraint .t{font-weight:600;font-size:.92rem;margin-bottom:.3rem}
+.constraint p{font-size:.9rem;color:var(--sec);margin:0}
+ol.steps,ul.steps{padding-left:1.2rem;margin:0 0 2rem;font-size:.92rem;color:var(--sec)}
+ol.steps li,ul.steps li{margin-bottom:.7rem}
+ol.steps li::marker{color:var(--muted);font-weight:600}
+.cards{display:grid;grid-template-columns:1fr;gap:.75rem;margin:0 0 2rem}
+@media(min-width:640px){.cards.c2{grid-template-columns:1fr 1fr}.cards.c3{grid-template-columns:1fr 1fr 1fr}}
+.card{border:1px solid var(--border);border-radius:.6rem;background:#fff;padding:1rem}
+.card .t{font-weight:600;font-size:.9rem;margin-bottom:.35rem}
+.card p{font-size:.8rem;color:var(--sec);margin:0}
+.callout{border:1px solid #f0d48a;background:#fffaf0;border-radius:.6rem;padding:1.1rem 1.2rem;margin:0 0 2.5rem}
+.callout .t{font-family:ui-monospace,Menlo,monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:#b08900;margin-bottom:.5rem}
+.callout p{font-size:.82rem;color:#7a5c00;margin:0;line-height:1.6}
+table.tbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:.6rem;overflow:hidden;margin:0 0 2rem;font-size:.82rem}
+table.tbl th{text-align:left;background:var(--raised);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:.6rem .8rem;border-bottom:1px solid var(--border)}
+table.tbl td{padding:.6rem .8rem;border-bottom:1px solid var(--border);color:var(--sec);vertical-align:top}
+table.tbl tr:last-child td{border-bottom:0}
+table.tbl td.mono{font-family:ui-monospace,Menlo,monospace;color:var(--accent);white-space:nowrap}
+table.tbl td.cmd{font-family:ui-monospace,Menlo,monospace;font-size:.75rem;white-space:normal;overflow-wrap:anywhere;color:var(--sec)}
+table.tbl td.lbl{font-weight:600;color:var(--ink);white-space:nowrap}
+.diagram{margin:1.5rem 0 2.5rem;border:1px solid var(--border);border-radius:.7rem;background:#fafafa;padding:1.25rem}
+.diagram .mermaid{display:flex;justify-content:center;overflow-x:auto}
+.diagram .cap{font-size:.78rem;color:var(--muted);margin:1rem 0 0;text-align:center;line-height:1.5}
+.repos{display:grid;grid-template-columns:1fr;gap:.75rem;margin:0 0 2.5rem}
+@media(min-width:640px){.repos{grid-template-columns:1fr 1fr}}
+.repo{display:block;border:1px solid var(--border);border-radius:.6rem;background:var(--raised);padding:1rem;text-decoration:none;transition:border-color .2s}
+.repo:hover{border-color:var(--border-strong)}
+.repo .name{font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:.85rem;word-break:break-all}
+.repo .rd{font-size:.78rem;color:var(--sec);margin:.4rem 0 .5rem}
+.repo .stars{font-size:.75rem;color:var(--muted)}
+.tag{margin-left:.5rem;display:inline-flex;align-items:center;border:1px solid #f0c14b;background:#fffaf0;padding:.1rem .4rem;border-radius:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#b08900;vertical-align:middle}

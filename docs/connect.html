@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Multi-Provider Model Access — AISI Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="deepdive.css" />
+</head>
+<body style="--accent:#2d7fb8">
+<header class="dvhero">
+  <svg id="herofield" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap"><div class="col">
+    <a class="backlink" href="index.html#connect">← Back to overview</a>
+    <div><span class="badge"><span class="n">03</span> Connect</span></div>
+    <h1>Multi-Provider Model Access</h1>
+    <p class="lede">A transparent proxy that routes every model call through one audited layer.</p>
+  </div></div>
+</header>
+
+<article>
+<div class="wrap"><div class="col">
+
+  <h2 class="sh">What is a model access layer?</h2>
+  <p class="p">Researchers call models from multiple providers, and as an organisation grows it needs to know what was sent where, control the costs, and revoke access instantly. Any control that adds friction that slows down research is liable to be routed around, and a layer researchers bypass records nothing.</p>
+  <p class="p">A transparent proxy can solve for this. A researcher switching from direct API access to the proxy changes a couple of environment variables. The proxy handles authentication via temporary credentials, logs every request and response, provides per-team token usage, and supports instant revocation without touching researcher machines.</p>
+  <p class="p">A model access layer sits between researchers and the model providers they call. It handles authentication, routes traffic to the right upstream, logs interactions, and enforces organisational policy.</p>
+  <p class="p">There are two obvious ways to build this. The first hands each researcher a provider API key directly. The second wraps every provider SDK in an internal library that researchers import instead of the real one. Both work effectively with a handful of researchers but then strain as the numbers grow.</p>
+  <table class="tbl">
+    <thead><tr><th>Approach</th><th>Where it strains</th></tr></thead>
+    <tbody>
+      <tr><td>Hand each researcher a provider API key</td><td>Cost attribution is only via the providers' dashboards and doesn't include internal org structure. Preventing leaks requires every researcher to secure their machines individually.</td></tr>
+      <tr><td>Wrap every provider SDK in an internal library</td><td>Wrappers are often brittle and lag new provider features. Researchers reach for whatever tool fits the task and route around the library when it gets in the way. If the raw key ever passes through a researcher machine, it's exposed to leaks.</td></tr>
+    </tbody>
+  </table>
+  <p class="p">A transparent reverse proxy avoids both sets of problems. SDKs point at it via one or two environment variables and application code does not change.</p>
+
+  <h2 class="sh">Challenges to solve for</h2>
+  <div class="cards c3">
+    <div class="card"><div class="t">Invisible adoption</div><p>Any layer that asks researchers to install a library, import a wrapper, or change an SDK invocation can add friction and frustration.</p></div>
+    <div class="card"><div class="t">Credential rotation</div><p>Provider API keys are long-lived and unscoped. Distributing them removes the ability to attribute usage to an individual, expire credentials automatically, scope access to a specific project, or revoke one user without rotating the key for everyone.</p></div>
+    <div class="card"><div class="t">Logging all traffic</div><p>Retaining logs of all requests and responses allows for analysis of API usage (including model token usage) and post-hoc investigation.</p></div>
+  </div>
+
+  <h2 class="sh">AISI's implementation</h2>
+  <p class="p">AISI's API key proxy is called Portunus, and provides transparent proxying to any API, credential handling using AWS IAM and AWS Secrets Manager, and audit logging of all requests and responses. <em>We aim to open-source Portunus soon.</em></p>
+  <p class="p">Portunus has run in production since our earliest technical work. In the current generation, Envoy reverse-proxies in front of a backend service that handles credential exchange and audit publishing. About 150 researchers across 20+ teams send traffic to Portunus daily, calling roughly a dozen different API providers.</p>
+  <p class="p">Each provider gets a dedicated subdomain, such as <code>openai.proxy.aisi.gov.uk</code> or <code>anthropic.proxy.aisi.gov.uk</code>. We deploy all our infrastructure with AWS CDK, and adding a new direct provider involves a CDK stack update pointing at the upstream target. Adding a model available through OpenRouter or Bedrock is just a secret update.</p>
+  <p class="p">Researcher dev VMs are pre-configured at boot, where cloud-init writes relevant environment variables to <code>/etc/environment</code> so SDKs read them automatically.</p>
+  <p class="p">The following sections detail the design and implementation of Portunus.</p>
+
+  <h2 class="sh">The transparent proxy pattern</h2>
+  <p class="p">Every major model SDK reads its endpoint from an environment variable: <code>OPENAI_BASE_URL</code>, <code>ANTHROPIC_BASE_URL</code>, <code>MISTRAL_API_BASE</code>. Pointing those at a reverse proxy and replacing the API key with a short-lived credential routes every request through the access layer without any change to application code. The migration cost for setup is two environment variables, in any language, with any HTTP client.</p>
+  <p class="p">A request reaches the proxy carrying a credential that isn't a provider key. The proxy resolves it to a real API key from secrets storage, swaps the auth header, forwards the request upstream, and logs both halves on the way back.</p>
+
+  <h3 class="sub">The credential</h3>
+  <p class="p">In AISI's Research Platform, the typical environment variables are overridden with an AWS ARN-shaped URI naming a secret in AWS Secrets Manager:</p>
+  <pre class="code"><span class="lang">bash</span>OPENAI_API_KEY=aws-secretsmanager://arn:aws:secretsmanager:eu-west-2:...:secret:teams/aisi/openai-api-key-xxxxx</pre>
+  <p class="p">Before each request leaves the machine, the URI is rewritten into a base64-encoded payload of temporary AWS credentials. The credentials come from <code>sts:AssumeRole</code> with a session policy scoped to one ARN, capped at the STS maximum of 12 hours. For evaluations that run through <a class="x" href="https://inspect.aisi.org.uk/" target="_blank" rel="noopener">Inspect</a>, an <a class="x" href="https://inspect.aisi.org.uk/extensions.html#sec-hooks" target="_blank" rel="noopener">override_api_key hook</a> does the rewrite at model init. For use in other tools, we've written a small command-line tool that handles this credential encoding.</p>
+  <p class="p">The payload looks like an opaque token to the relevant SDK, which will set it as the relevant authorization header (e.g. <code>Authorization: Bearer</code>). The proxy decodes it, fetches the real key from Secrets Manager using the embedded credentials, and substitutes the header before forwarding. The temporary credentials are usable only against that one Secrets Manager ARN, and only from one place.</p>
+
+  <h3 class="sub">Where the secret can be read</h3>
+  <p class="p">Reading a real provider API key requires two capabilities: IAM scope and network origin.</p>
+  <p class="p">Researcher IAM identities are granted <code>secretsmanager:GetSecretValue</code> on path-scoped ARNs: <code>users/{name}/*</code>, <code>teams/{slug}/*</code>, <code>projects/{slug}/*</code>. A researcher can name secrets that belong to their own identity and group memberships but not name secrets belonging to another team.</p>
+  <p class="p">API key secrets carry a resource-based deny policy that rejects <code>GetSecretValue</code> from any source except the VPC endpoints belonging to the proxy. A researcher with administrative AWS credentials, sitting on their dev VM, and attempting to read their own team's OpenAI key directly, gets <code>AccessDenied</code>. The proxy reads the same secret from inside its VPC using credentials minted from a researcher's session and succeeds.</p>
+  <p class="p">For a real key to reach a researcher, both gates must fail at once and these sit with different parties. The researchers hold the IAM scope, while the network origin belongs to the proxy, which runs in infrastructure a separate platform team operates. This construction is the standard AWS data-perimeter pattern. What's uncommon is applying it to third-party API keys behind a transparent proxy that researchers don't opt into.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="dualGate"></div>
+    <p class="cap">The dual gate. Reading a key needs both an identity capability (which secrets you may name) and a network capability (where the read may originate). The two sit with different parties, so a researcher with full IAM access still can't read the raw key from their own machine, only the proxy, from inside its VPC, satisfies both.</p></div>
+
+  <h2 class="sh">Audit logging</h2>
+  <p class="p">Routing every model call through Portunus means AISI retains the corpus of its own traffic. Many major LLM providers offer Zero Data Retention agreements, meaning they do not retain prompts or completions from user traffic. AISI has found it valuable to retain our own copy of LLM logs (including prompts and responses) for analysing usage and investigation.</p>
+  <p class="p">Through log analysis, our LLM provider usage is attributable to project, team, researcher, and model. A token-usage dashboard reads from the archive and surfaces team-level breakdowns and SQL queries. Sensitive projects get model and provider names hashed before the data lands in the dashboard, so cross-team visibility doesn't leak evaluation details.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="corpus"></div>
+    <p class="cap">The corpus. Because every call routes through the proxy and providers operate under Zero Data Retention, the record lives org-side. The captured stream feeds audit and cost attribution.</p></div>
+
+  <h2 class="sh">What transfers</h2>
+  <p class="p">We hope some of Portunus' design can be helpful to other organisations. For example, setting <code>OPENAI_BASE_URL</code> and <code>OPENAI_API_KEY</code> (and the equivalents for other providers) to point at a reverse proxy routes traffic through the layer without any code change. The proxy can be anything that intercepts and rewrites the <code>Authorization</code> header.</p>
+  <p class="p">Another transferable part of the design is the use of Secrets Manager URIs. An ARN-shaped URI goes in the API key field and is rewritten into short-lived credentials by the SDK or a small helper before each request. The real provider key never lands on the researcher's machine, only a short-lived credential that expires and works through the proxy alone.</p>
+  <p class="p">A third part is the dual gate, where an identity capability names what can be read and a network capability determines where it can be read from. A key is only accessible when both line up. Many internal LLM gateways work only on the identity half.</p>
+  <p class="p">The implementation choices here are infrastructure reference examples rather than requirements. Secrets Manager, STS, Kinesis, and VPC endpoints have direct equivalents in other clouds. Envoy is convenient because its filter chain makes the credential swap clean, but Nginx, HAProxy, or a custom reverse proxy work too. Inspect's <code>override_api_key</code> hook is how external collaborators integrate the credential exchange invisibly, and any framework with equivalent extension points works the same way.</p>
+
+  <h2 class="sh">Repositories</h2>
+  <div class="repos" id="repos"></div>
+
+  <a class="x" href="index.html#connect" style="font-size:.9rem;font-weight:600;text-decoration:none">← Back to overview</a>
+</div></div>
+</article>
+
+<script>
+window.DD={
+  edit:"https://linear.app/aisi/document/deep-dive-connect-multi-provider-model-access-11ac3498eb1a",
+  line:"#65AEE0", shape:"converge", extra:"gateway",
+  charts:{
+    dualGate:`flowchart TB
+    KEY{{"Read a real<br/>provider API key"}}
+    subgraph G1["Gate 1 — Identity (held by researcher)"]
+        direction TB
+        I1["IAM: secretsmanager:GetSecretValue"]
+        I2["Path-scoped ARNs<br/>users/* · teams/* · projects/*"]
+        I1 --> I2
+    end
+    subgraph G2["Gate 2 — Network origin (held by proxy)"]
+        direction TB
+        N1["Resource policy denies all sources…"]
+        N2["…except the proxy's VPC endpoints"]
+        N1 --> N2
+    end
+    KEY --> G1
+    KEY --> G2
+    R1["Researcher on dev VM<br/>has IAM, wrong origin"] -->|"AccessDenied"| DENY["Key never leaves"]
+    PX["Proxy<br/>right origin, minted session"] -->|"both gates pass"| OK["Key fetched, used, discarded"]
+    G1 -.-> R1
+    G2 -.-> PX
+    classDef q fill:#fff7d6,stroke:#b08900;
+    classDef gate fill:#e6f0ff,stroke:#3366aa;
+    classDef bad fill:#ffeae6,stroke:#aa5533;
+    classDef good fill:#dfd,stroke:#5a5;
+    class KEY q;
+    class I1,I2,N1,N2 gate;
+    class R1,DENY bad;
+    class PX,OK good;`,
+    corpus:`flowchart LR
+    TRAFFIC["Every model call<br/>routed through the proxy"]
+    CORPUS[("Org-held corpus<br/>prompts + responses")]
+    ZDR["Zero Data Retention<br/>provider keeps nothing"]
+    TRAFFIC --> CORPUS
+    TRAFFIC -. "provider side" .-> ZDR
+    CORPUS --> U1["Audit<br/>reconstruct what was sent"]
+    CORPUS --> U2["Cost attribution<br/>project · team · researcher · model"]
+    classDef src fill:#dfd,stroke:#5a5;
+    classDef store fill:#fff7d6,stroke:#b08900;
+    classDef ext fill:#f4f4f4,stroke:#999,color:#333;
+    classDef use fill:#e6f0ff,stroke:#3366aa;
+    class TRAFFIC src;
+    class CORPUS store;
+    class ZDR ext;
+    class U1,U2 use;`,
+  },
+  repos:[
+    {name:"portunus",url:"",description:"Transparent API key proxy with audit logging. Envoy reverse-proxies in front of a credential-exchange backend; the deployment infrastructure is AISI-specific.",stars:0},
+  ],
+};
+</script>
+<script type="module" src="deepdive.js"></script>
+</body>
+</html>

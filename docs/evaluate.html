@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Evaluation Framework — AISI Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="deepdive.css" />
+</head>
+<body style="--accent:#2f6fe0">
+<header class="dvhero">
+  <svg id="herofield" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap"><div class="col">
+    <a class="backlink" href="index.html#evaluate">← Back to overview</a>
+    <div><span class="badge"><span class="n">01</span> Evaluate</span></div>
+    <h1>Evaluation Framework</h1>
+    <p class="lede">A reproducible way to test frontier AI models across security-relevant domains.</p>
+  </div></div>
+</header>
+
+<article>
+<div class="wrap"><div class="col">
+
+  <h2 class="sh">What is an evaluation?</h2>
+  <p class="p">An evaluation is a structured, controlled process for measuring a property of an AI system. That property might be a capability, a tendency, or a risk.</p>
+  <p class="p">At its simplest, an evaluation gives a model an input, observes the output, and scores it. In the simplest case, scoring means comparing the output against a known target, like in a multiple-choice knowledge test. In more complex cases, scoring may involve grading an output according to set criteria, either automatically using AI or manually by humans.</p>
+  <p class="p">However, frontier models not only answer questions, but also use tools, execute code, browse the web, and take multi-step actions across sandboxed environments. When you evaluate whether a model can solve a cyber challenge, the "output" is the full sequence of what the model did along the way (its transcript or "trajectory"), which you need to capture accurately and thoroughly through careful logging and instrumentation.</p>
+  <p class="p">Doing this reliably, across many models and many evaluations, is the job of an evaluation framework. This is the shared software that runs an evaluation, talks to the model, captures what happens, and scores the result. It needs a way to represent inputs and expected outputs (<strong>samples</strong>), a strategy for eliciting behaviour from the model (<strong>solvers</strong>), and a method for judging the result (<strong>scorers</strong>). These three components combine into a <strong>task</strong>, a complete, self-contained evaluation that can be run against any model. Related tasks that share a theme are grouped into a <strong>benchmark</strong>. When these evaluations involve untrusted code or potentially dangerous agent actions, we run them in isolated execution environments (<strong>sandboxes</strong>).</p>
+  <p class="p">These terms recur throughout this page, and several have more common names you may already know them by. Before going further, below is a glossary of terms which shows how smaller pieces build up into larger ones.</p>
+  <table class="tbl">
+    <thead><tr><th>Term</th><th>Also known as</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Sample</strong></td><td>test case, item</td><td>A single input paired with its expected output (the target). The smallest unit of an evaluation.</td></tr>
+      <tr><td><strong>Solver</strong></td><td>scaffold, harness</td><td>The structure put in place to let the model attempt the task, from simple prompting through chain-of-thought to a full agent loop.</td></tr>
+      <tr><td><strong>Scorer</strong></td><td>grader, judge</td><td>How the model's output is judged against the target, whether by exact match, by another model, or by a human.</td></tr>
+      <tr><td><strong>Task</strong></td><td>component</td><td>A dataset of samples, a solver, and a scorer composed together.</td></tr>
+      <tr><td><strong>Run</strong></td><td>trajectory</td><td>The log (or transcript) capturing every message, tool call, and result from the task starting to it finishing (through completion or a limit being hit).</td></tr>
+      <tr><td><strong>Evaluation</strong></td><td>an "eval"</td><td>Loosely, any measurement of a model. In practice it can mean a single task, or a whole set of related tasks run together.</td></tr>
+      <tr><td><strong>Benchmark</strong></td><td>eval suite</td><td>A collection of tasks that differ but share a common theme, such as maths or capture-the-flag (CTF) coding challenges.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="diagram"><div class="mermaid" data-chart="evalSpectrum"></div>
+    <p class="cap">Three evaluation patterns of increasing complexity. The first, question and answer, is a single model call scored by an exact match against the target, the kind of multiple-choice test described above. The second, multi-turn, builds a conversation up over several steps and has another model grade the answer, which suits questions with no single correct phrasing. The third, a tool-using agent, lets the model call tools and act inside an isolated sandbox that holds the environment it is changing, scored at checkpoints along the way. In the diagram, samples are blue, solvers green, scorers yellow, and sandboxes purple.</p></div>
+
+  <h2 class="sh">Constraints in evaluating models</h2>
+  <p class="p">A handful of constraints shape what an evaluation framework must handle at the frontier.</p>
+  <div class="constraints">
+    <div class="constraint"><div class="t">Non-determinism</div><p>Run the same evaluation twice and you may get different results. A single success can settle whether a model is <em>capable</em> of something, but how <em>reliably</em> it succeeds only emerges across many runs, which is why individual pass/fail results are usually read in aggregate. You need statistical rigour over large sample sets, metrics like <a class="x" href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents" target="_blank" rel="noopener">pass@k</a> (probability of at least one success across k trials), and confidence intervals that account for variance.</p></div>
+    <div class="constraint"><div class="t">Untrusted execution</div><p>An agentic evaluation describes a set-up where a model can use tools to (for example) write and execute code as a normal part of the task. In coding benchmarks, an agent may compile and run programs. In cyber evaluations, an agent may attempt a live cyber task. In these cases, we cannot allow a model to escape its environment, touch the host, or reach the public internet, because the aim is to measure dangerous capabilities without enabling their consequences. The evaluation framework treats the execution environment as hostile by default and isolates it at a level the task warrants.</p></div>
+    <div class="constraint"><div class="t">Trajectory complexity</div><p>Even when execution is safe, a multi-step trajectory is hard to judge. A single pass/fail tells you almost nothing about a run that made dozens of tool calls and recovered from several dead ends. Understanding the result means capturing the whole trajectory and scoring it for partial credit. Without that record, you cannot tell a genuine success from a lucky one or distinguish between models that may have not reached the final step but made substantially different progress towards it. Capturing the trajectory is therefore essential to measurement.</p></div>
+    <div class="constraint"><div class="t">Provider fragmentation</div><p>There are 40+ model providers, each with different APIs, authentication schemes, and capabilities. If an evaluation is tied to a single provider's API, it isn't comparable across models, and comparability is essential. Evaluations must be provider-agnostic at the framework level.</p></div>
+    <div class="constraint"><div class="t">Budget and elicitation</div><p>The same model can look more or less capable depending on the resources the evaluation gives it. The token budget, the number of turns or tool calls allowed, and the scaffold it runs in all shape the result, an effect known as inference scaling or test-time compute scaling. <a class="x" href="https://www.aisi.gov.uk/blog/evidence-for-inference-scaling-in-ai-cyber-tasks-increased-evaluation-budgets-reveal-higher-success-rates" target="_blank" rel="noopener">On cyber tasks, success rates keep climbing as the budget grows</a>, with some tasks only solved at the upper end of the range, so a budget set too low underestimates what a model can do. A framework therefore has to make these inference limits explicit and adjustable, because the result only means something alongside the budget that produced it.</p></div>
+    <div class="constraint"><div class="t">Scale and resilience</div><p>Real evaluation campaigns are not just large, they are long-running and prone to failure. AISI has tested <a class="x" href="https://www.aisi.gov.uk/frontier-ai-trends-report" target="_blank" rel="noopener">30+ frontier models</a>, METR runs <a class="x" href="https://metr.org/blog/2026-1-29-time-horizon-1-1/" target="_blank" rel="noopener">228 tasks</a> per model, and a single agentic evaluation can involve hundreds of model calls. Across such volumes, evaluations can fail mid-run due to API rate limits, network errors, or provider outages. A framework therefore needs to be resumable, retry-aware, and able to preserve completed work across failures.</p></div>
+  </div>
+
+  <h2 class="sh">Composable by design</h2>
+  <p class="p">Considered together, these constraints drive what a framework needs to look like. If evaluations are built from independent, pluggable primitives, then reusability, provider-agnosticism, and community contribution tend to follow from the architecture itself. <a class="x" href="https://inspect.aisi.org.uk/" target="_blank" rel="noopener">Inspect</a> is built around this principle.</p>
+  <p class="p">An evaluation composes three core components:</p>
+  <p class="p"><strong>Samples</strong> are the inputs and their expected outputs, the <em>what</em> of an evaluation. A dataset is just a collection of samples, loaded from CSV, JSON, Hugging Face, or custom sources. Each sample can carry metadata, sandbox configuration, and files to inject into execution environments.</p>
+  <p class="p"><strong>Solvers</strong> define how to elicit behaviour from a model. They chain in sequence, each transforming the conversation state. A simple evaluation might use a single <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.solver.html#generate" target="_blank" rel="noopener"><code>generate()</code></a> solver. A more sophisticated one might chain <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.solver.html#system_message" target="_blank" rel="noopener"><code>system_message()</code></a> → <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.solver.html#chain_of_thought" target="_blank" rel="noopener"><code>chain_of_thought()</code></a> → <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.solver.html#generate" target="_blank" rel="noopener"><code>generate()</code></a>. The key design decision is the separation of <em>how you ask</em> from <em>what you ask</em>. The same samples can be evaluated with different solver strategies (direct prompting, few-shot, chain-of-thought, or a full agent scaffold) and the results compared.</p>
+  <p class="p"><strong>Scorers</strong> judge the final output against the target, and the choice of scorer is a trade-off between precision and flexibility. <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html#exact" target="_blank" rel="noopener"><code>exact()</code></a> matching is fast and deterministic but brittle to valid variations in phrasing. <a class="x" href="https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html#model_graded_qa" target="_blank" rel="noopener"><code>model_graded_qa()</code></a> handles paraphrasing and nuance but is non-deterministic and costs money to run. Each scorer declares its own metrics, so a result describes how it was measured.</p>
+  <p class="p">In addition there are three other pieces that complete the picture:</p>
+  <p class="p"><strong>Sandboxes</strong> provide isolated environments configured per sample, so different samples can run at different isolation tiers. A standard coding task runs in Docker. Something that probes network services runs in Kubernetes with gVisor. A cyber evaluation where container escape is a realistic concern runs in a Virtual Machine. The isolation tier is matched to what the task can do if it gets loose. For further information on sandboxes, please read the page <a class="x" href="isolate.html">Isolate</a>.</p>
+  <p class="p"><strong>Agents</strong> compose solvers, tools, and planning for the complex end of the spectrum. Inspect provides a built-in <a class="x" href="https://inspect.aisi.org.uk/agents.html" target="_blank" rel="noopener">ReAct agent</a>, multi-agent handoffs, and an <a class="x" href="https://inspect.aisi.org.uk/agent-bridge.html" target="_blank" rel="noopener">Agent Bridge</a> for running external agents (OpenAI Agents SDK, LangChain, Claude Code) inside evaluations.</p>
+  <p class="p"><strong>Inference limits</strong> cap how much room a sample gets, whether through a token budget, a wall-clock timeout, a maximum number of messages, a finite number of times the agent can submit a solution, or a cap on tool calls. They are set per sample or per task and recorded alongside the result, because the same task at a higher budget can produce a higher score. A result is only interpretable next to the limits that produced it, so limits are a first-class part of an evaluation rather than a runtime detail.</p>
+
+  <pre class="code"><span class="lang">python</span>@task
+def hello_world():
+    return Task(
+        dataset=[Sample(input="Just reply with Hello World", target="Hello World")],
+        solver=[generate()],
+        scorer=exact(),
+    )</pre>
+  <pre class="code"><span class="lang">bash</span>inspect eval hello_world.py --model openai/gpt-4o</pre>
+  <p class="p">This is a complete, runnable evaluation. The model, solver chain, and scorer can each be swapped independently, so the same task runs against any supported provider with any elicitation strategy or scoring method. Full documentation at <a class="x" href="https://inspect.aisi.org.uk/" target="_blank" rel="noopener">inspect.aisi.org.uk</a>.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="taskComposition"></div>
+    <p class="cap">Task composition, colour-coded by the glossary: a sample's input (blue) drives the solver (green) while its target (blue) is checked by the scorer (yellow), and samples, solver, and scorer compose into a Task. A sandbox (purple) can be attached per sample, and an agent composes solvers, tools, and planning for the more complex evaluations. Each component can be swapped independently behind a single CLI.</p></div>
+
+  <h2 class="sh">Extending the framework</h2>
+  <p class="p">With forty model providers, five sandbox backends, and hundreds of evaluation-specific tools, the ecosystem needs to grow without everything living in the central repository. Inspect handles this through Python's standard setuptools entry points, so anyone can extend the framework by publishing a package. Contributors can extend the framework independently, without coordinating with each other or modifying core code, allowing the ecosystem to grow organically.</p>
+  <p class="p">There are five extension points:</p>
+  <ol class="steps">
+    <li><strong>Model Providers</strong> (40+): OpenAI, Anthropic, Google, Mistral, AWS Bedrock, vLLM, Ollama, Hugging Face, and more. Adding a new provider means implementing one class.</li>
+    <li><strong>Sandbox Environments</strong>: Docker (built-in), Kubernetes, EC2, Proxmox, Modal. Each implements a lifecycle interface (setup, exec, cleanup).</li>
+    <li><strong>Tools</strong>: bash, python, browser, text editor, computer use, plus full <a class="x" href="https://inspect.aisi.org.uk/tools-mcp.html" target="_blank" rel="noopener">MCP</a> integration for connecting to external tool servers.</li>
+    <li><strong>Approvers</strong>: policies for approving, modifying, or rejecting tool calls before execution. Human-in-the-loop or automated policy gating.</li>
+    <li><strong>Hooks</strong>: lifecycle events (run start/end, task start/end, sample start/end) for logging, monitoring, and integration with external systems.</li>
+  </ol>
+  <p class="p">This is how 50+ contributors across organisations build and share evaluation components independently.</p>
+
+  <h2 class="sh">Beyond pass/fail</h2>
+  <p class="p">Running evaluations produces data. However, a pass rate on a large benchmark doesn't tell you <em>why</em> a model failed, or <em>how</em> it behaved along the way. The hardest part of evaluation is understanding the results.</p>
+  <p class="p">Inspect treats analysis as a first-class concern across the full evaluation lifecycle.</p>
+
+  <h3 class="sub">Structured logs</h3>
+  <p class="p">Every evaluation produces a detailed log: the full conversation transcript, every tool call and its result, sandbox interactions, timing data, and scores. Logs are JSON-based and programmatically accessible via Python, or browsable in the web-based <a class="x" href="https://inspect.aisi.org.uk/log-viewer.html" target="_blank" rel="noopener">Inspect View</a>, which updates live as evaluations run.</p>
+
+  <h3 class="sub">Eval sets</h3>
+  <p class="p">Real evaluation campaigns aren't single tasks but are instead coordinated runs across models, benchmarks, and configurations. <a class="x" href="https://inspect.aisi.org.uk/eval-sets.html" target="_blank" rel="noopener">Eval sets</a> provide the infrastructure: automatic retry with exponential backoff, sample preservation across failures (completed work isn't repeated), and resumable runs that pick up where they left off. Results can be bundled into standalone log viewers deployable to static hosting.</p>
+
+  <h3 class="sub">Transcript analysis</h3>
+  <p class="p"><a class="x" href="https://www.aisi.gov.uk/blog/a-pipeline-for-transcript-analysis-using-inspect-scout" target="_blank" rel="noopener">Inspect Scout</a> is a tool for systematic, quantitative analysis of agent transcripts at scale. It uses <em>scanners</em>, functions that detect specific signals in transcripts:</p>
+  <div class="cards c3">
+    <div class="card"><div class="t">Refusal detection</div><p>Is the model declining tasks because of safety training, or because it genuinely can't do them?</p></div>
+    <div class="card"><div class="t">Evaluation awareness</div><p>Is the model behaving differently because it knows it's being tested? The <a class="x" href="https://internationalaisafetyreport.org/publication/international-ai-safety-report-2026" target="_blank" rel="noopener">International AI Safety Report 2026</a> flagged this as a growing concern for pre-deployment testing.</p></div>
+    <div class="card"><div class="t">Command errors</div><p>Is the model trying to use tools it doesn't have access to, suggesting the evaluation setup may be under-measuring capability?</p></div>
+  </div>
+  <p class="p">Scout scales to thousands of transcripts in parallel and transforms unstructured agent trajectories into structured data for downstream analysis.</p>
+
+  <div class="diagram"><div class="mermaid" data-chart="lifecycle"></div>
+    <p class="cap">The evaluation lifecycle. Design, Run, Analyse, Understand. Each stage is served by specific tools.</p></div>
+
+  <h2 class="sh">Inspect Evals: 150+ benchmarks, one command</h2>
+  <p class="p"><a class="x" href="https://github.com/UKGovernmentBEIS/inspect_evals" target="_blank" rel="noopener">inspect_evals</a> is a community-contributed collection of benchmarks built on Inspect. It is the largest open-source library of AI security and capability evaluations.</p>
+  <pre class="code"><span class="lang">bash</span>pip install inspect-evals
+inspect eval inspect_evals/arc --model anthropic/claude-sonnet-4-20250514</pre>
+  <p class="p">Benchmarks span 11 categories across capabilities and security. On the capabilities side, they cover knowledge, reasoning, coding, mathematics, assistants, multimodal understanding, and writing which includes widely used benchmarks like MMLU, SWE-bench, and GSM8K.</p>
+  <p class="p">The security focused categories are the ones most relevant to this playbook. <strong>Safeguards</strong> evaluations (AgentHarm, WMDP, StrongREJECT) test jailbreaks, harmful content generation, and weapons knowledge. <strong>Scheming</strong> evaluations probe self-proliferation, self-reasoning, and situational awareness to account for the fact that a model may behave differently when it knows it's under evaluation. <strong>Cybersecurity</strong> evaluations assess offensive capabilities in CTF challenges.</p>
+  <p class="p">Every benchmark composes the same primitives from section 3, which is why 50+ contributors can add evaluations independently. The framework handles orchestration, sandboxing, and scoring, so the benchmark author only needs to provide the samples, solver chain, and scoring criteria. The full catalogue is in the <a class="x" href="https://github.com/UKGovernmentBEIS/inspect_evals" target="_blank" rel="noopener">inspect_evals repo</a>.</p>
+
+  <h3 class="sub">Agentic cyber evaluations</h3>
+  <p class="p"><a class="x" href="https://github.com/UKGovernmentBEIS/inspect_cyber" target="_blank" rel="noopener">inspect_cyber</a> is a purpose-built extension for evaluations where an AI agent is placed in a sandboxed environment and tasked with performing cybersecurity operations.</p>
+  <div class="cards c2">
+    <div class="card"><div class="t">YAML-driven definitions</div><p>Evaluations defined declaratively (challenge name, agent prompt, sandbox config, flags, checkpoints).</p></div>
+    <div class="card"><div class="t">Variant support</div><p>Multiple variants per evaluation (different prompts, difficulty levels, sandbox types) sharing infrastructure.</p></div>
+    <div class="card"><div class="t">Checkpoint-based scoring</div><p>Ordered checkpoints for partial-credit scoring on multi-step challenges. A model that gets halfway through a CTF challenge scores better than one that doesn't start.</p></div>
+    <div class="card"><div class="t">Solution verification</div><p>Validate that an evaluation is correctly configured and solvable before spending on model runs.</p></div>
+  </div>
+  <p class="p">Full docs at <a class="x" href="https://inspect.cyber.aisi.org.uk/" target="_blank" rel="noopener">inspect.cyber.aisi.org.uk</a>.</p>
+
+  <h2 class="sh">Getting started</h2>
+  <pre class="code"><span class="lang">bash</span>pip install inspect-ai
+inspect eval inspect_evals/arc --model openai/gpt-4o
+inspect view</pre>
+  <p class="p">Full documentation at <a class="x" href="https://inspect.aisi.org.uk/" target="_blank" rel="noopener">inspect.aisi.org.uk</a>.</p>
+
+  <h2 class="sh">Repositories</h2>
+  <div class="repos" id="repos"></div>
+
+  <a class="x" href="index.html#evaluate" style="font-size:.9rem;font-weight:600;text-decoration:none">← Back to overview</a>
+</div></div>
+</article>
+
+<script>
+window.DD={edit:"https://linear.app/aisi/document/deep-dive-evaluate-evaluation-framework-3aa8399cea5d",line:"#4183F8",shape:"flow",extra:"none",charts:{
+  evalSpectrum:`flowchart LR
+    subgraph S1["Question and answer"]
+        direction TB
+        I1[Input] --> G1[Generate] --> M1[Exact match] --> R1[Score]
+    end
+    subgraph S2["Multi-turn"]
+        direction TB
+        SP[System prompt] --> CoT[Chain-of-thought] --> G2[Generate] --> MG[Model-graded score] --> R2[Score]
+    end
+    subgraph S3["Tool-using agent"]
+        direction TB
+        A[Agent loop] <--> T[Tool calls]
+        T <--> SB[(Sandbox)]
+        SB <--> ENV[Environment state]
+        A --> CP[Checkpoint scoring] --> R3[Score]
+    end
+    S1 --> S2 --> S3
+    classDef sample fill:#dbeafe,stroke:#2563eb,color:#1e3a5f;
+    classDef solver fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef scorer fill:#fef9c3,stroke:#ca8a04,color:#713f12;
+    classDef result fill:#f3f4f6,stroke:#9ca3af,color:#374151;
+    classDef sandbox fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    class I1,SP,ENV sample;
+    class G1,G2,CoT,A,T solver;
+    class M1,MG,CP scorer;
+    class R1,R2,R3 result;
+    class SB sandbox;`,
+  taskComposition:`flowchart LR
+    subgraph TASK["Task"]
+        direction LR
+        DS[(Samples)] -- input --> SOL[Solver]
+        DS -- target --> SCR[Scorer]
+        SOL -- model output --> SCR
+        SCR --> SCORE[Score]
+        SB[/Sandbox/] -.attached per sample.-> SOL
+    end
+    AG[Agent] -.composes solvers, tools, planning<br/>for the complex end.-> SOL
+    classDef sample fill:#dbeafe,stroke:#2563eb,color:#1e3a5f;
+    classDef solver fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef scorer fill:#fef9c3,stroke:#ca8a04,color:#713f12;
+    classDef result fill:#f3f4f6,stroke:#9ca3af,color:#374151;
+    classDef sandbox fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    class DS sample;
+    class SOL,AG solver;
+    class SCR scorer;
+    class SCORE result;
+    class SB sandbox;`,
+  lifecycle:`flowchart LR
+    D[Design] --> R[Run] --> A[Analyse] --> U[Understand]
+    D --- D1[Samples]
+    D --- D2[Solver]
+    D --- D3[Scorer]
+    D --- D4[Sandbox]
+    R --- R1[Eval sets]
+    R --- R2[Retry + backoff]
+    R --- R3[Sample preservation]
+    R --- R4[Multi-model campaigns]
+    A --- A1["Inspect View<br/>logs &amp; transcripts"]
+    A --- A2["Inspect Scout<br/>transcript scanning"]
+    U --- U1[Refusal rates]
+    U --- U2[Capability profiles]
+    U --- U3[Behavioural signals]
+    classDef stage fill:#1f2a44,stroke:#1f2a44,color:#fff;
+    class D,R,A,U stage;`,
+},repos:[
+ {name:"inspect_ai",url:"https://github.com/UKGovernmentBEIS/inspect_ai",description:"Composable evaluation framework. Datasets, solvers, scorers, sandboxes, and agents as pluggable components. 40+ model providers, async-first, with a built-in log viewer.",stars:1782},
+ {name:"inspect_evals",url:"https://github.com/UKGovernmentBEIS/inspect_evals",description:"150+ community benchmarks across 11 categories: knowledge, reasoning, coding, safeguards, cybersecurity, scheming, mathematics, and more.",stars:381},
+ {name:"inspect_cyber",url:"https://github.com/UKGovernmentBEIS/inspect_cyber",description:"YAML-driven extension for agentic cyber evaluations. Multi-sandbox, checkpoint-based scoring, solution verification.",stars:22},
+]};
+</script>
+<script type="module" src="deepdive.js"></script>
+</body>
+</html>
