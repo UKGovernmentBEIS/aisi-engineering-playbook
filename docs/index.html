@@ -18,13 +18,14 @@
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
+  html,body{max-width:100%;overflow-x:hidden}  /* decorative SVGs must never widen the page */
   body{margin:0;background:var(--surface);color:var(--ink);line-height:1.6;
        font-family:"Onest","Inter",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
   h1,h2{letter-spacing:-.02em;line-height:1.08;margin:0}
 
   /* hero #1: black title panel + uniform field (draws away off the right) */
   #darkpanel{position:absolute;top:0;left:0;width:100%;z-index:1;background:var(--dark);border-bottom:1px solid #2a2f3a}
-  #herofield{position:absolute;top:0;left:0;width:100%;height:100vh;z-index:2;overflow:hidden;pointer-events:none;
+  #herofield{position:absolute;top:0;left:0;width:100%;height:100vh;z-index:2;overflow:hidden;pointer-events:none;max-width:100%;
     -webkit-mask-image:linear-gradient(to right,transparent 0%,transparent 42%,#000 60%);
     mask-image:linear-gradient(to right,transparent 0%,transparent 42%,#000 60%)}
   #herofield path{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round}
@@ -75,7 +76,7 @@
   footer{position:relative;z-index:5;padding:1.5rem 0;border-top:1px solid var(--border);background:var(--surface)}
   footer .row{display:flex;flex-direction:column;gap:1.5rem}
   @media(min-width:640px){footer .row{flex-direction:row;align-items:center;justify-content:space-between}}
-  footer img{height:2.75rem;width:auto}
+  footer img{height:2.75rem;width:auto;max-width:100%}
   .os{display:flex;flex-direction:column;gap:.75rem}
   @media(min-width:640px){.os{flex-direction:row;align-items:baseline;gap:2rem}}
   .os h4{font-size:.75rem;font-family:ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;white-space:nowrap}
@@ -84,7 +85,25 @@
   .os li{font-family:ui-monospace,Menlo,monospace;font-size:.75rem;color:var(--sec)}
   .os .cs{color:var(--muted)}
   .os a:hover{color:var(--ink)}
+  /* mobile footer: the column layout's default align-items:stretch was blowing the
+     logo up to full width; the fixed 3-col repo grid overran the viewport. */
+  @media(max-width:639px){
+    footer .row{align-items:flex-start}
+    .os ul{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem}
+  }
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+  /* ---- mobile: the decorative threads sit off-screen / behind the text and were
+     forcing horizontal overflow (browser then zooms the whole page out). Drop them,
+     give the reading column the full width, and even out the padding. ---- */
+  @media(max-width:768px){
+    .bg{display:none}
+    #herofield{display:none}
+    .wrap{padding:0 1.25rem}
+    .col{max-width:none}
+    .desc{padding-left:1.1rem}
+    .hero p,.layer .sub,.desc,.repos{max-width:none}
+  }
 </style>
 </head>
 <body>

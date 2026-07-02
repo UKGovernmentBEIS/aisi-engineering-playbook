@@ -79,3 +79,12 @@ table.tbl td.lbl{font-weight:600;color:var(--ink);white-space:nowrap}
 .repo .rd{font-size:.78rem;color:var(--sec);margin:.4rem 0 .5rem}
 .repo .stars{font-size:.75rem;color:var(--muted)}
 .tag{margin-left:.5rem;display:inline-flex;align-items:center;border:1px solid #f0c14b;background:#fffaf0;padding:.1rem .4rem;border-radius:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#b08900;vertical-align:middle}
+
+/* ---- mobile: even out the hero padding and drop the decorative lane field,
+   which otherwise runs across the lede text. ---- */
+html,body{max-width:100%;overflow-x:hidden}
+@media(max-width:768px){
+  .dvhero{padding:3.25rem 0 2.75rem}
+  .dvhero .wrap{padding:0 1.25rem}
+  #herofield{display:none}
+}
