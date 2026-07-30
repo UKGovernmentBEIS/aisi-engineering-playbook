@@ -47,7 +47,7 @@
   </div>
 
   <h2 class="sh">AISI's implementation</h2>
-  <p class="p">AISI's API key proxy is called Portunus, and provides transparent proxying to any API, credential handling using AWS IAM and AWS Secrets Manager, and audit logging of all requests and responses. <em>We aim to open-source Portunus soon.</em></p>
+  <p class="p">AISI's API key proxy is called Portunus, and provides transparent proxying to any API, credential handling using AWS IAM and AWS Secrets Manager, and audit logging of all requests and responses. Portunus is <a class="x" href="https://github.com/AI-Safety-Institute/portunus" target="_blank" rel="noopener">open source on GitHub</a>.</p>
   <p class="p">Portunus has run in production since our earliest technical work. In the current generation, Envoy reverse-proxies in front of a backend service that handles credential exchange and audit publishing. About 150 researchers across 20+ teams send traffic to Portunus daily, calling roughly a dozen different API providers.</p>
   <p class="p">Each provider gets a dedicated subdomain, such as <code>openai.proxy.aisi.gov.uk</code> or <code>anthropic.proxy.aisi.gov.uk</code>. We deploy all our infrastructure with AWS CDK, and adding a new direct provider involves a CDK stack update pointing at the upstream target. Adding a model available through OpenRouter or Bedrock is just a secret update.</p>
   <p class="p">Researcher dev VMs are pre-configured at boot, where cloud-init writes relevant environment variables to <code>/etc/environment</code> so SDKs read them automatically.</p>
@@ -143,7 +143,7 @@ window.DD={
     class U1,U2 use;`,
   },
   repos:[
-    {name:"portunus",url:"",description:"Transparent API key proxy with audit logging. Envoy reverse-proxies in front of a credential-exchange backend; the deployment infrastructure is AISI-specific.",stars:0},
+    {name:"portunus",url:"https://github.com/AI-Safety-Institute/portunus",description:"Transparent API key proxy with audit logging. Envoy reverse-proxies in front of a FastAPI credential-exchange backend.",stars:1},
   ],
 };
 </script>
